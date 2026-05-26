@@ -1,0 +1,25 @@
+{
+  "features": [
+    "water_temp",
+    "ec",
+    "turbidity",
+    "prev_flowrate",
+    "prev_duration",
+    "time_since_last_dose",
+    "ph",
+    "dissolved_oxygen",
+    "ambient_temp",
+    "delta_ec",
+    "delta_temp",
+    "delta_turbidity",
+    "rolling_avg_ec",
+    "rolling_std_ec",
+    "ec_error",
+    "cumulative_nutrients",
+    "dosing_frequency"
+  ],
+  "targets": [
+    "optimal_flowrate",
+    "optimal_duration"
+  ]
+}

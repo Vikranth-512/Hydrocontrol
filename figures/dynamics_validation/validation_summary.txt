@@ -1,0 +1,18 @@
+no_control_final_ec: 0.08
+no_control_ec_drop: 1.0898416318787645
+max_ec_step_no_control: 0.05964932402151191
+good_control_ec_mean: 0.7334397332384442
+max_ec_step_good_control: 0.06283631454011274
+bad_control_overshoot: -0.011036756418792981
+max_ec_step_aggressive: 0.06210434497867223
+max_ec_step_impulse: 0.056014180201897856
+temp_ec_range: 0.2125672108357844
+temp_ec_final_range: 0.0
+temp_policy_ec_cold: 0.7380243932785209
+temp_policy_ec_hot: 0.7357342639674815
+temp_policy_spread: 0.04589789982467879
+sediment_ec_delta: 0.0
+sediment_turbidity_delta: 24.528152377960453
+ec_turbidity_correlation: 0.511929433390072
+closed_loop_final_ec: {'none': 0.08, 'pid_22C': 0.7414501126670918, 'pid_30C': 0.7367125968096859, 'pid_17C': 0.7476829237474107}
+validation_passed: True

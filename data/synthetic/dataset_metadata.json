@@ -1,0 +1,1389 @@
+{
+  "trajectories": [
+    {
+      "id": 0,
+      "file": "trajectory_00000.csv",
+      "length": 410,
+      "scenario": "normal"
+    },
+    {
+      "id": 1,
+      "file": "trajectory_00001.csv",
+      "length": 457,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 2,
+      "file": "trajectory_00002.csv",
+      "length": 400,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 3,
+      "file": "trajectory_00003.csv",
+      "length": 432,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 4,
+      "file": "trajectory_00004.csv",
+      "length": 235,
+      "scenario": "cold_shock"
+    },
+    {
+      "id": 5,
+      "file": "trajectory_00005.csv",
+      "length": 138,
+      "scenario": "cold_shock"
+    },
+    {
+      "id": 6,
+      "file": "trajectory_00006.csv",
+      "length": 169,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 7,
+      "file": "trajectory_00007.csv",
+      "length": 161,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 8,
+      "file": "trajectory_00008.csv",
+      "length": 392,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 9,
+      "file": "trajectory_00009.csv",
+      "length": 283,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 10,
+      "file": "trajectory_00010.csv",
+      "length": 366,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 11,
+      "file": "trajectory_00011.csv",
+      "length": 115,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 12,
+      "file": "trajectory_00012.csv",
+      "length": 481,
+      "scenario": "saturation"
+    },
+    {
+      "id": 13,
+      "file": "trajectory_00013.csv",
+      "length": 369,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 14,
+      "file": "trajectory_00014.csv",
+      "length": 317,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 15,
+      "file": "trajectory_00015.csv",
+      "length": 220,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 16,
+      "file": "trajectory_00016.csv",
+      "length": 175,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 17,
+      "file": "trajectory_00017.csv",
+      "length": 495,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 18,
+      "file": "trajectory_00018.csv",
+      "length": 458,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 19,
+      "file": "trajectory_00019.csv",
+      "length": 254,
+      "scenario": "saturation"
+    },
+    {
+      "id": 20,
+      "file": "trajectory_00020.csv",
+      "length": 103,
+      "scenario": "heatwave"
+    },
+    {
+      "id": 21,
+      "file": "trajectory_00021.csv",
+      "length": 157,
+      "scenario": "heatwave"
+    },
+    {
+      "id": 22,
+      "file": "trajectory_00022.csv",
+      "length": 201,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 23,
+      "file": "trajectory_00023.csv",
+      "length": 169,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 24,
+      "file": "trajectory_00024.csv",
+      "length": 186,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 25,
+      "file": "trajectory_00025.csv",
+      "length": 481,
+      "scenario": "normal"
+    },
+    {
+      "id": 26,
+      "file": "trajectory_00026.csv",
+      "length": 172,
+      "scenario": "sediment"
+    },
+    {
+      "id": 27,
+      "file": "trajectory_00027.csv",
+      "length": 230,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 28,
+      "file": "trajectory_00028.csv",
+      "length": 239,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 29,
+      "file": "trajectory_00029.csv",
+      "length": 261,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 30,
+      "file": "trajectory_00030.csv",
+      "length": 484,
+      "scenario": "saturation"
+    },
+    {
+      "id": 31,
+      "file": "trajectory_00031.csv",
+      "length": 194,
+      "scenario": "sediment"
+    },
+    {
+      "id": 32,
+      "file": "trajectory_00032.csv",
+      "length": 447,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 33,
+      "file": "trajectory_00033.csv",
+      "length": 286,
+      "scenario": "cold_shock"
+    },
+    {
+      "id": 34,
+      "file": "trajectory_00034.csv",
+      "length": 295,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 35,
+      "file": "trajectory_00035.csv",
+      "length": 408,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 36,
+      "file": "trajectory_00036.csv",
+      "length": 157,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 37,
+      "file": "trajectory_00037.csv",
+      "length": 178,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 38,
+      "file": "trajectory_00038.csv",
+      "length": 384,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 39,
+      "file": "trajectory_00039.csv",
+      "length": 274,
+      "scenario": "sediment"
+    },
+    {
+      "id": 40,
+      "file": "trajectory_00040.csv",
+      "length": 193,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 41,
+      "file": "trajectory_00041.csv",
+      "length": 380,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 42,
+      "file": "trajectory_00042.csv",
+      "length": 297,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 43,
+      "file": "trajectory_00043.csv",
+      "length": 469,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 44,
+      "file": "trajectory_00044.csv",
+      "length": 113,
+      "scenario": "saturation"
+    },
+    {
+      "id": 45,
+      "file": "trajectory_00045.csv",
+      "length": 109,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 46,
+      "file": "trajectory_00046.csv",
+      "length": 444,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 47,
+      "file": "trajectory_00047.csv",
+      "length": 474,
+      "scenario": "saturation"
+    },
+    {
+      "id": 48,
+      "file": "trajectory_00048.csv",
+      "length": 310,
+      "scenario": "heatwave"
+    },
+    {
+      "id": 49,
+      "file": "trajectory_00049.csv",
+      "length": 310,
+      "scenario": "saturation"
+    },
+    {
+      "id": 50,
+      "file": "trajectory_00050.csv",
+      "length": 152,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 51,
+      "file": "trajectory_00051.csv",
+      "length": 157,
+      "scenario": "heatwave"
+    },
+    {
+      "id": 52,
+      "file": "trajectory_00052.csv",
+      "length": 315,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 53,
+      "file": "trajectory_00053.csv",
+      "length": 359,
+      "scenario": "heatwave"
+    },
+    {
+      "id": 54,
+      "file": "trajectory_00054.csv",
+      "length": 458,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 55,
+      "file": "trajectory_00055.csv",
+      "length": 196,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 56,
+      "file": "trajectory_00056.csv",
+      "length": 473,
+      "scenario": "sediment"
+    },
+    {
+      "id": 57,
+      "file": "trajectory_00057.csv",
+      "length": 261,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 58,
+      "file": "trajectory_00058.csv",
+      "length": 372,
+      "scenario": "sediment"
+    },
+    {
+      "id": 59,
+      "file": "trajectory_00059.csv",
+      "length": 183,
+      "scenario": "heatwave"
+    },
+    {
+      "id": 60,
+      "file": "trajectory_00060.csv",
+      "length": 184,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 61,
+      "file": "trajectory_00061.csv",
+      "length": 433,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 62,
+      "file": "trajectory_00062.csv",
+      "length": 181,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 63,
+      "file": "trajectory_00063.csv",
+      "length": 276,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 64,
+      "file": "trajectory_00064.csv",
+      "length": 130,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 65,
+      "file": "trajectory_00065.csv",
+      "length": 477,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 66,
+      "file": "trajectory_00066.csv",
+      "length": 255,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 67,
+      "file": "trajectory_00067.csv",
+      "length": 281,
+      "scenario": "sediment"
+    },
+    {
+      "id": 68,
+      "file": "trajectory_00068.csv",
+      "length": 323,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 69,
+      "file": "trajectory_00069.csv",
+      "length": 481,
+      "scenario": "normal"
+    },
+    {
+      "id": 70,
+      "file": "trajectory_00070.csv",
+      "length": 162,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 71,
+      "file": "trajectory_00071.csv",
+      "length": 426,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 72,
+      "file": "trajectory_00072.csv",
+      "length": 298,
+      "scenario": "normal"
+    },
+    {
+      "id": 73,
+      "file": "trajectory_00073.csv",
+      "length": 257,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 74,
+      "file": "trajectory_00074.csv",
+      "length": 170,
+      "scenario": "sediment"
+    },
+    {
+      "id": 75,
+      "file": "trajectory_00075.csv",
+      "length": 171,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 76,
+      "file": "trajectory_00076.csv",
+      "length": 297,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 77,
+      "file": "trajectory_00077.csv",
+      "length": 324,
+      "scenario": "sediment"
+    },
+    {
+      "id": 78,
+      "file": "trajectory_00078.csv",
+      "length": 244,
+      "scenario": "heatwave"
+    },
+    {
+      "id": 79,
+      "file": "trajectory_00079.csv",
+      "length": 324,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 80,
+      "file": "trajectory_00080.csv",
+      "length": 457,
+      "scenario": "sediment"
+    },
+    {
+      "id": 81,
+      "file": "trajectory_00081.csv",
+      "length": 146,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 82,
+      "file": "trajectory_00082.csv",
+      "length": 154,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 83,
+      "file": "trajectory_00083.csv",
+      "length": 420,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 84,
+      "file": "trajectory_00084.csv",
+      "length": 125,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 85,
+      "file": "trajectory_00085.csv",
+      "length": 471,
+      "scenario": "cold_shock"
+    },
+    {
+      "id": 86,
+      "file": "trajectory_00086.csv",
+      "length": 467,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 87,
+      "file": "trajectory_00087.csv",
+      "length": 185,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 88,
+      "file": "trajectory_00088.csv",
+      "length": 257,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 89,
+      "file": "trajectory_00089.csv",
+      "length": 366,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 90,
+      "file": "trajectory_00090.csv",
+      "length": 202,
+      "scenario": "heatwave"
+    },
+    {
+      "id": 91,
+      "file": "trajectory_00091.csv",
+      "length": 286,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 92,
+      "file": "trajectory_00092.csv",
+      "length": 497,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 93,
+      "file": "trajectory_00093.csv",
+      "length": 112,
+      "scenario": "cold_shock"
+    },
+    {
+      "id": 94,
+      "file": "trajectory_00094.csv",
+      "length": 373,
+      "scenario": "heatwave"
+    },
+    {
+      "id": 95,
+      "file": "trajectory_00095.csv",
+      "length": 452,
+      "scenario": "saturation"
+    },
+    {
+      "id": 96,
+      "file": "trajectory_00096.csv",
+      "length": 114,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 97,
+      "file": "trajectory_00097.csv",
+      "length": 385,
+      "scenario": "sediment"
+    },
+    {
+      "id": 98,
+      "file": "trajectory_00098.csv",
+      "length": 379,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 99,
+      "file": "trajectory_00099.csv",
+      "length": 186,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 100,
+      "file": "trajectory_00100.csv",
+      "length": 112,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 101,
+      "file": "trajectory_00101.csv",
+      "length": 303,
+      "scenario": "saturation"
+    },
+    {
+      "id": 102,
+      "file": "trajectory_00102.csv",
+      "length": 316,
+      "scenario": "cold_shock"
+    },
+    {
+      "id": 103,
+      "file": "trajectory_00103.csv",
+      "length": 140,
+      "scenario": "sediment"
+    },
+    {
+      "id": 104,
+      "file": "trajectory_00104.csv",
+      "length": 263,
+      "scenario": "saturation"
+    },
+    {
+      "id": 105,
+      "file": "trajectory_00105.csv",
+      "length": 273,
+      "scenario": "normal"
+    },
+    {
+      "id": 106,
+      "file": "trajectory_00106.csv",
+      "length": 380,
+      "scenario": "normal"
+    },
+    {
+      "id": 107,
+      "file": "trajectory_00107.csv",
+      "length": 262,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 108,
+      "file": "trajectory_00108.csv",
+      "length": 131,
+      "scenario": "saturation"
+    },
+    {
+      "id": 109,
+      "file": "trajectory_00109.csv",
+      "length": 291,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 110,
+      "file": "trajectory_00110.csv",
+      "length": 211,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 111,
+      "file": "trajectory_00111.csv",
+      "length": 423,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 112,
+      "file": "trajectory_00112.csv",
+      "length": 317,
+      "scenario": "saturation"
+    },
+    {
+      "id": 113,
+      "file": "trajectory_00113.csv",
+      "length": 484,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 114,
+      "file": "trajectory_00114.csv",
+      "length": 211,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 115,
+      "file": "trajectory_00115.csv",
+      "length": 323,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 116,
+      "file": "trajectory_00116.csv",
+      "length": 138,
+      "scenario": "cold_shock"
+    },
+    {
+      "id": 117,
+      "file": "trajectory_00117.csv",
+      "length": 182,
+      "scenario": "sediment"
+    },
+    {
+      "id": 118,
+      "file": "trajectory_00118.csv",
+      "length": 111,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 119,
+      "file": "trajectory_00119.csv",
+      "length": 181,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 120,
+      "file": "trajectory_00120.csv",
+      "length": 351,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 121,
+      "file": "trajectory_00121.csv",
+      "length": 171,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 122,
+      "file": "trajectory_00122.csv",
+      "length": 162,
+      "scenario": "saturation"
+    },
+    {
+      "id": 123,
+      "file": "trajectory_00123.csv",
+      "length": 434,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 124,
+      "file": "trajectory_00124.csv",
+      "length": 206,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 125,
+      "file": "trajectory_00125.csv",
+      "length": 320,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 126,
+      "file": "trajectory_00126.csv",
+      "length": 242,
+      "scenario": "normal"
+    },
+    {
+      "id": 127,
+      "file": "trajectory_00127.csv",
+      "length": 134,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 128,
+      "file": "trajectory_00128.csv",
+      "length": 385,
+      "scenario": "cold_shock"
+    },
+    {
+      "id": 129,
+      "file": "trajectory_00129.csv",
+      "length": 473,
+      "scenario": "heatwave"
+    },
+    {
+      "id": 130,
+      "file": "trajectory_00130.csv",
+      "length": 127,
+      "scenario": "normal"
+    },
+    {
+      "id": 131,
+      "file": "trajectory_00131.csv",
+      "length": 144,
+      "scenario": "sediment"
+    },
+    {
+      "id": 132,
+      "file": "trajectory_00132.csv",
+      "length": 362,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 133,
+      "file": "trajectory_00133.csv",
+      "length": 238,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 134,
+      "file": "trajectory_00134.csv",
+      "length": 377,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 135,
+      "file": "trajectory_00135.csv",
+      "length": 119,
+      "scenario": "cold_shock"
+    },
+    {
+      "id": 136,
+      "file": "trajectory_00136.csv",
+      "length": 407,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 137,
+      "file": "trajectory_00137.csv",
+      "length": 265,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 138,
+      "file": "trajectory_00138.csv",
+      "length": 205,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 139,
+      "file": "trajectory_00139.csv",
+      "length": 450,
+      "scenario": "heatwave"
+    },
+    {
+      "id": 140,
+      "file": "trajectory_00140.csv",
+      "length": 336,
+      "scenario": "saturation"
+    },
+    {
+      "id": 141,
+      "file": "trajectory_00141.csv",
+      "length": 369,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 142,
+      "file": "trajectory_00142.csv",
+      "length": 317,
+      "scenario": "saturation"
+    },
+    {
+      "id": 143,
+      "file": "trajectory_00143.csv",
+      "length": 500,
+      "scenario": "cold_shock"
+    },
+    {
+      "id": 144,
+      "file": "trajectory_00144.csv",
+      "length": 499,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 145,
+      "file": "trajectory_00145.csv",
+      "length": 158,
+      "scenario": "sediment"
+    },
+    {
+      "id": 146,
+      "file": "trajectory_00146.csv",
+      "length": 498,
+      "scenario": "cold_shock"
+    },
+    {
+      "id": 147,
+      "file": "trajectory_00147.csv",
+      "length": 180,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 148,
+      "file": "trajectory_00148.csv",
+      "length": 444,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 149,
+      "file": "trajectory_00149.csv",
+      "length": 249,
+      "scenario": "cold_shock"
+    },
+    {
+      "id": 150,
+      "file": "trajectory_00150.csv",
+      "length": 363,
+      "scenario": "sediment"
+    },
+    {
+      "id": 151,
+      "file": "trajectory_00151.csv",
+      "length": 377,
+      "scenario": "saturation"
+    },
+    {
+      "id": 152,
+      "file": "trajectory_00152.csv",
+      "length": 159,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 153,
+      "file": "trajectory_00153.csv",
+      "length": 212,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 154,
+      "file": "trajectory_00154.csv",
+      "length": 266,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 155,
+      "file": "trajectory_00155.csv",
+      "length": 304,
+      "scenario": "saturation"
+    },
+    {
+      "id": 156,
+      "file": "trajectory_00156.csv",
+      "length": 169,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 157,
+      "file": "trajectory_00157.csv",
+      "length": 309,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 158,
+      "file": "trajectory_00158.csv",
+      "length": 457,
+      "scenario": "sediment"
+    },
+    {
+      "id": 159,
+      "file": "trajectory_00159.csv",
+      "length": 478,
+      "scenario": "sediment"
+    },
+    {
+      "id": 160,
+      "file": "trajectory_00160.csv",
+      "length": 288,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 161,
+      "file": "trajectory_00161.csv",
+      "length": 203,
+      "scenario": "heatwave"
+    },
+    {
+      "id": 162,
+      "file": "trajectory_00162.csv",
+      "length": 474,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 163,
+      "file": "trajectory_00163.csv",
+      "length": 220,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 164,
+      "file": "trajectory_00164.csv",
+      "length": 326,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 165,
+      "file": "trajectory_00165.csv",
+      "length": 265,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 166,
+      "file": "trajectory_00166.csv",
+      "length": 290,
+      "scenario": "normal"
+    },
+    {
+      "id": 167,
+      "file": "trajectory_00167.csv",
+      "length": 448,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 168,
+      "file": "trajectory_00168.csv",
+      "length": 135,
+      "scenario": "cold_shock"
+    },
+    {
+      "id": 169,
+      "file": "trajectory_00169.csv",
+      "length": 321,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 170,
+      "file": "trajectory_00170.csv",
+      "length": 168,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 171,
+      "file": "trajectory_00171.csv",
+      "length": 338,
+      "scenario": "cold_shock"
+    },
+    {
+      "id": 172,
+      "file": "trajectory_00172.csv",
+      "length": 130,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 173,
+      "file": "trajectory_00173.csv",
+      "length": 180,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 174,
+      "file": "trajectory_00174.csv",
+      "length": 469,
+      "scenario": "cold_shock"
+    },
+    {
+      "id": 175,
+      "file": "trajectory_00175.csv",
+      "length": 286,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 176,
+      "file": "trajectory_00176.csv",
+      "length": 243,
+      "scenario": "heatwave"
+    },
+    {
+      "id": 177,
+      "file": "trajectory_00177.csv",
+      "length": 147,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 178,
+      "file": "trajectory_00178.csv",
+      "length": 124,
+      "scenario": "normal"
+    },
+    {
+      "id": 179,
+      "file": "trajectory_00179.csv",
+      "length": 336,
+      "scenario": "temp_spike"
+    },
+    {
+      "id": 180,
+      "file": "trajectory_00180.csv",
+      "length": 303,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 181,
+      "file": "trajectory_00181.csv",
+      "length": 249,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 182,
+      "file": "trajectory_00182.csv",
+      "length": 164,
+      "scenario": "saturation"
+    },
+    {
+      "id": 183,
+      "file": "trajectory_00183.csv",
+      "length": 336,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 184,
+      "file": "trajectory_00184.csv",
+      "length": 214,
+      "scenario": "sediment"
+    },
+    {
+      "id": 185,
+      "file": "trajectory_00185.csv",
+      "length": 435,
+      "scenario": "actuator_failure"
+    },
+    {
+      "id": 186,
+      "file": "trajectory_00186.csv",
+      "length": 406,
+      "scenario": "normal"
+    },
+    {
+      "id": 187,
+      "file": "trajectory_00187.csv",
+      "length": 269,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 188,
+      "file": "trajectory_00188.csv",
+      "length": 396,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 189,
+      "file": "trajectory_00189.csv",
+      "length": 366,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 190,
+      "file": "trajectory_00190.csv",
+      "length": 268,
+      "scenario": "noisy_sensors"
+    },
+    {
+      "id": 191,
+      "file": "trajectory_00191.csv",
+      "length": 433,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 192,
+      "file": "trajectory_00192.csv",
+      "length": 371,
+      "scenario": "delayed_response"
+    },
+    {
+      "id": 193,
+      "file": "trajectory_00193.csv",
+      "length": 223,
+      "scenario": "normal"
+    },
+    {
+      "id": 194,
+      "file": "trajectory_00194.csv",
+      "length": 457,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 195,
+      "file": "trajectory_00195.csv",
+      "length": 460,
+      "scenario": "ec_drop"
+    },
+    {
+      "id": 196,
+      "file": "trajectory_00196.csv",
+      "length": 365,
+      "scenario": "heatwave"
+    },
+    {
+      "id": 197,
+      "file": "trajectory_00197.csv",
+      "length": 471,
+      "scenario": "normal"
+    },
+    {
+      "id": 198,
+      "file": "trajectory_00198.csv",
+      "length": 351,
+      "scenario": "nutrient_depletion"
+    },
+    {
+      "id": 199,
+      "file": "trajectory_00199.csv",
+      "length": 460,
+      "scenario": "normal"
+    }
+  ],
+  "config_snapshot": {
+    "seed": 42,
+    "experiment_name": "algae_dosing_policy_v3",
+    "paths": {
+      "raw": "data/raw",
+      "synthetic": "data/synthetic",
+      "processed": "data/processed",
+      "checkpoints": "checkpoints",
+      "figures": "figures",
+      "scalers": "data/processed/scalers",
+      "metadata": "data/processed/metadata"
+    },
+    "simulation": {
+      "dt_seconds": 60.0,
+      "trajectory_length_min": 100,
+      "trajectory_length_max": 500,
+      "num_trajectories": 200,
+      "ec_target": 1.2,
+      "ec_safe_min": 0.4,
+      "ec_safe_max": 2.5,
+      "flowrate_min": 0.0,
+      "flowrate_max": 5.0,
+      "duration_min": 0.0,
+      "duration_max": 30.0,
+      "min_time_between_doses": 120.0,
+      "noise_std": {
+        "water_temp": 0.05,
+        "ec": 0.02,
+        "turbidity": 1.0,
+        "ph": 0.02,
+        "dissolved_oxygen": 0.1
+      }
+    },
+    "dynamics": {
+      "ec_healthy_min": 0.75,
+      "ec_instability_threshold": 1.55,
+      "ec_soft_limit": 2.2,
+      "ec_hard_limit": 3.0,
+      "baseline_ec_depletion": 0.0038,
+      "biological_uptake_rate": 0.0035,
+      "starvation_acceleration": 0.006,
+      "nutrient_to_ec_gain": 0.095,
+      "immediate_absorption_fraction": 0.28,
+      "delay_kernel": [
+        0.15,
+        0.25,
+        0.3,
+        0.2,
+        0.1
+      ],
+      "ec_assimilation_tau": 0.18,
+      "max_queue_release_rate": 0.048,
+      "release_damping": 0.85,
+      "ec_spring_stiffness": 0.0,
+      "ec_damping": 0.22,
+      "memory_to_ec_gain": 0.04,
+      "temp_ref": 25.0,
+      "temp_opt": 26.0,
+      "temp_sigma": 5.0,
+      "q10_coefficient": 2.2,
+      "temp_coupling_strength": 2.0,
+      "ambient_temp_mean": 22.0,
+      "temp_relaxation_rate": 0.025,
+      "turbidity_temp_exponent": 1.35,
+      "turbidity_carrying_capacity": 220.0,
+      "turbidity_growth_rate": 0.016,
+      "turbidity_mortality_rate": 0.0045,
+      "biomass_memory_alpha": 0.025,
+      "turbidity_growth_lag_tau": 0.06,
+      "turbidity_ec_coupling": 0.25,
+      "turbidity_stochastic_std": 0.4,
+      "algae_sensor_tau": 0.045,
+      "bloom_turbidity_noise": 1.2,
+      "health_lag_tau": 0.035,
+      "nutrient_memory_alpha": 0.06,
+      "nutrient_overshoot_penalty": 0.04,
+      "oscillation_sensitivity": 0.05,
+      "cumulative_nutrient_limit": 50.0,
+      "overshoot_ec_gain": 0.02,
+      "drift_rate": 1e-05
+    },
+    "disturbances": {
+      "ec_shock_prob": 0.02,
+      "ec_shock_magnitude": 0.08,
+      "temp_spike_prob": 0.02,
+      "temp_spike_magnitude": 3.0,
+      "heatwave_prob": 0.01,
+      "heatwave_duration": 40,
+      "heatwave_magnitude": 4.0,
+      "cold_shock_prob": 0.01,
+      "cold_shock_magnitude": -3.5,
+      "seasonal_drift_rate": 0.002,
+      "mixing_noise_std": 0.006,
+      "uptake_pulse_prob": 0.025,
+      "uptake_pulse_factor": 1.35,
+      "actuator_failure_prob": 0.01,
+      "actuator_failure_efficiency": 0.35,
+      "nutrient_depletion_prob": 0.02,
+      "nutrient_depletion_magnitude": 0.12,
+      "turbidity_sediment_prob": 0.015,
+      "turbidity_sediment_magnitude": 18.0,
+      "correlated_noise_rho": 0.85
+    },
+    "labeling": {
+      "horizon_steps": 15,
+      "candidate_flowrates": [
+        0.0,
+        0.5,
+        1.0,
+        1.5,
+        2.0,
+        2.5,
+        3.0,
+        3.5,
+        4.0,
+        4.5,
+        5.0
+      ],
+      "candidate_durations": [
+        0.0,
+        5.0,
+        10.0,
+        15.0,
+        20.0,
+        25.0,
+        30.0
+      ],
+      "weights": {
+        "ec_error": 1.0,
+        "nutrient_cost": 0.3,
+        "instability": 0.5,
+        "overshoot": 0.8
+      }
+    },
+    "preprocessing": {
+      "sequence_length": 32,
+      "prediction_horizon": 1,
+      "train_ratio": 0.7,
+      "val_ratio": 0.15,
+      "test_ratio": 0.15,
+      "scaler_type": "standard",
+      "rolling_window": 8
+    },
+    "model": {
+      "input_size": null,
+      "hidden_size": 128,
+      "num_layers": 2,
+      "dropout": 0.2,
+      "output_size": 2
+    },
+    "training": {
+      "batch_size": 64,
+      "epochs": 80,
+      "learning_rate": 0.001,
+      "weight_decay": 1e-05,
+      "grad_clip": 1.0,
+      "loss_type": "control_aware",
+      "control_loss_weights": {
+        "action": 1.0,
+        "instability": 0.2,
+        "aggressive_change": 0.15,
+        "excessive_dose": 0.1
+      },
+      "early_stopping_patience": 12,
+      "lr_scheduler": "reduce_on_plateau",
+      "lr_factor": 0.5,
+      "lr_patience": 5
+    },
+    "evaluation": {
+      "closed_loop_steps": 500,
+      "pid": {
+        "kp": 2.5,
+        "ki": 0.08,
+        "kd": 0.4
+      },
+      "rule_based": {
+        "ec_low_threshold": 0.9,
+        "ec_high_threshold": 1.4
+      }
+    },
+    "export": {
+      "format": "torchscript"
+    }
+  },
+  "dynamics_version": "v2_active_equilibrium"
+}

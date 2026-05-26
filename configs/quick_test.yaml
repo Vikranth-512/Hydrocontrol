@@ -1,0 +1,98 @@
+# Fast smoke-test (dynamics v3)
+
+seed: 42
+experiment_name: algae_dosing_quick_v3
+
+paths:
+  raw: data/raw
+  synthetic: data/synthetic
+  processed: data/processed
+  checkpoints: checkpoints
+  figures: figures
+  scalers: data/processed/scalers
+  metadata: data/processed/metadata
+
+simulation:
+  dt_seconds: 60.0
+  trajectory_length_min: 100
+  trajectory_length_max: 150
+  num_trajectories: 15
+  ec_target: 1.2
+  ec_safe_min: 0.4
+  ec_safe_max: 2.5
+  flowrate_min: 0.0
+  flowrate_max: 5.0
+  duration_min: 0.0
+  duration_max: 30.0
+  min_time_between_doses: 120.0
+  noise_std:
+    water_temp: 0.05
+    ec: 0.02
+    turbidity: 1.0
+    ph: 0.02
+    dissolved_oxygen: 0.1
+
+dynamics:
+  ec_healthy_min: 0.75
+  ec_soft_limit: 2.2
+  ec_hard_limit: 3.0
+  baseline_ec_depletion: 0.0045
+  biological_uptake_rate: 0.0035
+  nutrient_to_ec_gain: 0.065
+  immediate_absorption_fraction: 0.15
+  delay_kernel: [0.15, 0.25, 0.30, 0.20, 0.10]
+  ec_assimilation_tau: 0.12
+  max_queue_release_rate: 0.035
+  temp_coupling_strength: 1.6
+  q10_coefficient: 2.2
+  temp_opt: 26.0
+  ambient_temp_mean: 22.0
+  turbidity_ec_coupling: 0.25
+  biomass_memory_alpha: 0.025
+  turbidity_stochastic_std: 0.4
+
+disturbances:
+  heatwave_prob: 0.02
+  turbidity_sediment_prob: 0.02
+  mixing_noise_std: 0.006
+
+labeling:
+  horizon_steps: 10
+  candidate_flowrates: [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+  candidate_durations: [0.0, 10.0, 20.0, 30.0]
+  weights:
+    ec_error: 1.0
+    nutrient_cost: 0.3
+    instability: 0.5
+    overshoot: 0.8
+
+preprocessing:
+  sequence_length: 16
+  prediction_horizon: 1
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  scaler_type: standard
+  rolling_window: 8
+
+model:
+  hidden_size: 64
+  num_layers: 2
+  dropout: 0.2
+  output_size: 2
+
+training:
+  batch_size: 32
+  epochs: 5
+  learning_rate: 0.001
+  early_stopping_patience: 3
+
+evaluation:
+  closed_loop_steps: 200
+  pid:
+    kp: 2.5
+    ki: 0.08
+    kd: 0.4
+
+export:
+  format: torchscript
