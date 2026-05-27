@@ -1,4 +1,4 @@
-### Learned Nutrient Dosing Control controls a nonlinear delayed aquatic ecosystem.
+# Learned Nutrient Dosing Control for a nonlinear delayed aquatic ecosystem.
 
 The pipeline includes:
 
