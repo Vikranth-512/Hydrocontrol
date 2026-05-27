@@ -16,7 +16,7 @@ This is **not** a forecasting model. It learns a control policy using optimizati
 
 ## Overview
 
-The system continuously monitors multivariate aquatic ecosystem parameters such as:
+### The system continuously monitors multivariate aquatic ecosystem parameters such as:
 
 Electrical Conductivity (EC)
 Water Temperature
@@ -24,14 +24,14 @@ Turbidity
 pH
 Dissolved Oxygen
 
-and learns a control policy that outputs:
+### and learns a control policy that outputs:
 
 Nutrient Pump Flowrate
 Pump Activation Duration
 
 to maintain ecological stability and nutrient balance in a dynamic algae cultivation environment.
 
-Unlike conventional threshold-based systems, this project models the environment as a nonlinear delayed ecosystem with:
+### Unlike conventional threshold-based systems, this project models the environment as a nonlinear delayed ecosystem with:
 
 delayed nutrient absorption,
 biological uptake,
@@ -42,16 +42,14 @@ ecological collapse conditions,
 and active closed-loop control requirements.
 Core Research Goal
 
-This project investigates the tradeoff between:
+### This project investigates the tradeoff between:
 
 Classical Stability-First Control
-
 (PID / rule-based control)
 
 vs
 
 Learned Precision Regulation
-
 (LSTM sequence policy learning)
 
 The tuned PID controller establishes a robust, conservative ecological baseline.
