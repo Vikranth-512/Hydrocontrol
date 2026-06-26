@@ -57,7 +57,7 @@ class TankDynamicsParams:
     ec_assimilation_tau: float = 0.18
     max_queue_release_rate: float = 0.048
     release_damping: float = 0.85
-    ec_spring_stiffness: float = 0.0
+    ec_spring_stiffness: float = 0.015
     ec_damping: float = 0.22
     memory_to_ec_gain: float = 0.04
 
@@ -236,16 +236,12 @@ def soft_ec_saturation_factor(ec: float, params: TankDynamicsParams) -> float:
 
     Uses smooth rational saturation: (1 - (ec/soft)^2)_+ with floor.
     """
-    ratio = ec / max(params.ec_soft_limit, 0.1)
-    factor = 1.0 - ratio * ratio
-    return float(np.clip(factor, 0.05, 1.0))
+    ratio = max(0.0, ec) / params.ec_soft_limit
+    return np.clip(1.0 - ratio**2, 0.15, 1.0)
 
 
-def _soft_clip_ec(ec: float, params: TankDynamicsParams) -> float:
-    """Tanh soft upper bound; hard floor at 0.08 (no negative EC)."""
-    limit = params.ec_hard_limit
-    upper = float(limit * np.tanh(ec / max(limit, 0.1)))
-    return float(max(0.08, upper))
+def _soft_clip_ec(ec, params):
+    return ec
 
 
 def _inject_delayed_dose(
@@ -321,7 +317,10 @@ def step_dynamics(
     # --- EC depletion (stronger at high temperature) ---
     baseline_drain = (params.baseline_ec_depletion + params.ec_decay_jitter) * thermal
     proportional_uptake = (
-        params.biological_uptake_rate * state.ec * thermal * dist.uptake_multiplier
+    params.biological_uptake_rate
+    * np.clip(state.ec, 0.0, None)
+    * thermal
+    * dist.uptake_multiplier
     )
     starvation = 0.0
     if state.ec < params.ec_healthy_min:
@@ -362,11 +361,11 @@ def step_dynamics(
         )
 
     if cumulative > params.cumulative_nutrient_limit:
-        ec_new += params.nutrient_overshoot_penalty * (
-            cumulative - params.cumulative_nutrient_limit
-        ) * 0.005 * dt_scale
+        pass
 
     ec_new = _soft_clip_ec(ec_new, params)
+
+    ec_new = max(0.0, ec_new)
 
     # --- Health & biomass memory (slow; decouples turbidity from instant EC) ---
     ec_ratio = float(np.clip(state.ec / params.ec_target, 0.0, 1.5))

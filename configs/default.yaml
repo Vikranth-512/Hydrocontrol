@@ -50,7 +50,7 @@ dynamics:
   ec_assimilation_tau: 0.18
   max_queue_release_rate: 0.048
   release_damping: 0.85
-  ec_spring_stiffness: 0.0
+  ec_spring_stiffness: 0.015
   ec_damping: 0.22
   memory_to_ec_gain: 0.04
   # Temperature — strong contextual driver
