@@ -83,7 +83,7 @@ class OptimizationLabeler:
 
         n_delay = self.base_params.delay_steps
         queue = np.zeros(n_delay, dtype=np.float64)
-        pending = _get("pending_absorption", 0.0)
+        pending = _get("pending_nutrients", 0.0)
         if pending > 0 and n_delay > 0:
             queue[0] = pending
 

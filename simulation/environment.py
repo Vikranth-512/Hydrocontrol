@@ -133,7 +133,7 @@ class AlgaeTankEnvironment:
             "flowrate": flowrate,
             "duration": duration,
             "ec": self.state.ec,
-            "pending_absorption": float(np.sum(self.state.absorption_queue)),
+            "pending_nutrients": float(np.sum(self.state.nutrient_queue)),
             "health_index": self.state.health_index,
         }
         return obs, info

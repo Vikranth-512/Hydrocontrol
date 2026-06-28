@@ -231,9 +231,9 @@ def stage_evaluate(config: dict, paths: dict, trainer: Trainer, preprocessed: di
                 config["simulation"]["dt_seconds"],
                 name=f"lstm_turbidity_{scenario}",
             )
-        if "pending_absorption" in lstm_traj:
+        if "pending_nutrients" in lstm_traj:
             plotter.plot_delayed_absorption(
-                lstm_traj["pending_absorption"],
+                lstm_traj["pending_nutrients"],
                 lstm_traj["ec"],
                 config["simulation"]["dt_seconds"],
                 name=f"lstm_delayed_{scenario}",

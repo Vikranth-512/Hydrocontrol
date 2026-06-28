@@ -28,16 +28,35 @@ simulation:
     turbidity: 1.0
 
 dynamics:
-  ec_healthy_min: 0.75
-  ec_soft_limit: 2.2
-  ec_hard_limit: 3.0
-  baseline_ec_depletion: 0.0038
-  biological_uptake_rate: 0.0035
-  nutrient_to_ec_gain: 0.095
+  sensor_gain_ec: 0.8
+  biomass_optical_factor: 2.2
+  algae_sensor_tau: 0.045
   immediate_absorption_fraction: 0.28
   delay_kernel: [0.15, 0.25, 0.30, 0.20, 0.10]
-  temp_coupling_strength: 2.0
+  max_queue_release_rate: 0.048
+  release_damping: 0.85
+  background_dilution_rate: 0.002
+  maximum_uptake_rate: 0.015
+  half_saturation_mass: 1.0
+  internal_capacity: 0.5
+  maximum_growth_rate: 0.012
+  growth_yield: 0.6
+  maintenance_cost: 0.001
+  biomass_nutrient_content: 0.1
+  mortality_rate: 0.0005
+  mineralization_rate: 0.002
+  damage_rate: 0.05
+  repair_rate: 0.02
+  osmotic_half_effect: 5.0
+  temp_ref: 25.0
+  temp_opt: 26.0
+  temp_sigma: 5.0
+  q10_coefficient: 2.2
+  temperature_rate_modifier: 2.0
   ambient_temp_mean: 22.0
+  temp_relaxation_rate: 0.025
+  ec_decay_jitter: 0.0001
+  gain_jitter: 0.002
 
 disturbances:
   heatwave_prob: 0.02
