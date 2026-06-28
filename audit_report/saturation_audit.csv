@@ -1,7 +1,0 @@
-ec,sat_factor,soft_clip,saturation_active,clipping_active
-0.5,0.9483471074380165,0.5,True,False
-1.0,0.7933884297520661,1.0,True,False
-1.2,0.7024793388429753,1.2,True,False
-1.5,0.5351239669421488,1.5,True,False
-2.0,0.17355371900826455,2.0,True,False
-3.0,0.15,3.0,True,False
