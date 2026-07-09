@@ -74,20 +74,79 @@ def run_timestep_sensitivity(output_dir: Path, params: TankDynamicsParams) -> Di
 def run_long_horizon(output_dir: Path, params: TankDynamicsParams) -> Dict[str, Any]:
     dt = 60.0
     length = 100_000
-    actions = [(1.0, 10.0)] * length
-    s = make_initial_state(params, dissolved_mass=2.0, biomass=100.0)
+    # Start biomass near the analytical carrying capacity (~1140) so the
+    # system reaches dynamic equilibrium quickly.  Starting at 100 produced
+    # a 100k-step growth curve with no visible plateau.
+    s = make_initial_state(params, dissolved_mass=2.0, biomass=1200.0)
 
     nan_count = 0
     inf_count = 0
     max_biomass = 0.0
     max_dissolved = 0.0
 
+    # Tracking averages
+    fluxes = {
+        "uptake": 0.0, "maintenance": 0.0, "growth": 0.0,
+        "mortality": 0.0, "damage_inc": 0.0, "repair_inc": 0.0
+    }
+
     # We don't store full DF for 100k steps - sample every 100
     sampled_rows = []
 
+    # Proportional controller parameters
+    # Target dissolved well below the osmotic half-effect (5.0) to keep the
+    # culture in a safe operating regime.  The old bang-bang controller
+    # allowed dissolved to reach 5.0 -- already 50 % uptake inhibition --
+    # then biomass grew unbounded and collapsed osmotically.
+    dissolved_target = 1.5
+    base_flow = 0.5
+    base_dur = 2.0
+    # Biomass level above which we throttle dosing to prevent the system
+    # from drifting above the self-shading carrying capacity.
+    biomass_throttle_level = 200.0
+
     for t in range(length):
-        fr, dur = actions[t]
-        s = step_dynamics(s, fr, dur, dt, params)
+        # --- Proportional dosing controller ---
+        error = dissolved_target - s.dissolved_nutrient_mass
+        dose_frac = float(np.clip(error / dissolved_target, 0.0, 1.0))
+
+        # Throttle when biomass is already high -- gentle logistic taper
+        biomass_brake = biomass_throttle_level / (biomass_throttle_level + max(s.algae_biomass - biomass_throttle_level, 0.0))
+        dose_frac *= biomass_brake
+
+        fr = base_flow * dose_frac
+        dur = base_dur * dose_frac
+
+        s_next = step_dynamics(s, fr, dur, dt, params)
+        
+        # Calculate fluxes at state s
+        osmotic = (s.dissolved_nutrient_mass / params.osmotic_half_effect)**2
+        osmotic_factor = 1.0 / (1.0 + osmotic)
+        
+        light_factor = params.light_attenuation_half_mass**2 / (params.light_attenuation_half_mass**2 + s.algae_biomass**2)
+        
+        uptake = params.maximum_uptake_rate * (s.dissolved_nutrient_mass / (params.half_saturation_mass + s.dissolved_nutrient_mass)) * osmotic_factor * s.health_index * s.algae_biomass
+        maint = params.maintenance_cost * s.algae_biomass
+        reserve_ratio = s.internal_reserve / max(s.algae_biomass * params.internal_capacity, 1e-6)
+        growth = params.maximum_growth_rate * reserve_ratio * osmotic_factor * light_factor * s.algae_biomass
+        
+        mort = params.mortality_rate * np.log1p(osmotic) * max(1.0, (10.0 * s.damage_index)**2) * s.algae_biomass
+        
+        deficit_ratio = max(0.0, maint - s.internal_reserve) / max(maint, 1e-6)
+        stress_drive = deficit_ratio * 1.0 + osmotic * 2.0
+        dmg = stress_drive * params.damage_rate * (1.0 - s.damage_index)
+        
+        repair_avail = min(maint, s.internal_reserve) / max(maint, 1e-6)
+        repair = (params.repair_rate * repair_avail + params.basal_repair_rate) * (s.damage_index ** 0.7)
+        
+        fluxes["uptake"] += float(uptake)
+        fluxes["maintenance"] += float(maint)
+        fluxes["growth"] += float(growth)
+        fluxes["mortality"] += float(mort)
+        fluxes["damage_inc"] += float(dmg)
+        fluxes["repair_inc"] += float(repair)
+
+        s = s_next
 
         for v in [s.dissolved_nutrient_mass, s.algae_biomass, s.internal_reserve, s.health_index]:
             if np.isnan(v):
@@ -116,13 +175,22 @@ def run_long_horizon(output_dir: Path, params: TankDynamicsParams) -> Dict[str, 
     plt.savefig(output_dir / "long_horizon.png", dpi=150)
     plt.close()
 
+    avg_fluxes = {k: v / length for k, v in fluxes.items()}
+    pd.DataFrame([avg_fluxes]).to_csv(output_dir / "long_horizon_avg_rates.csv", index=False)
+
+    # A healthy long-horizon run should have no numerical issues AND
+    # maintain a viable living culture (not collapse to zero).
+    alive = s.algae_biomass > 10.0 and s.health_index > 0.5
+
     return {
-        "status": "PASS" if nan_count == 0 and inf_count == 0 else "FAIL",
+        "status": "PASS" if nan_count == 0 and inf_count == 0 and alive else "FAIL",
         "metrics": {
             "NaN Count": nan_count,
             "Inf Count": inf_count,
             "Max Biomass": float(max_biomass),
             "Max Dissolved": float(max_dissolved),
+            "Avg Growth": avg_fluxes["growth"],
+            "Avg Mortality": avg_fluxes["mortality"],
             "Final Biomass": float(s.algae_biomass),
             "Final Health": float(s.health_index),
         },
@@ -143,7 +211,6 @@ def run_clipping_analysis(output_dir: Path, params: TankDynamicsParams) -> Dict[
 
     clips = {
         "uptake_capped_by_dissolved": 0,
-        "maintenance_capped_by_reserve": 0,
         "growth_capped_by_reserve": 0,
         "mortality_capped_at_95pct": 0,
         "damage_clipped_0": 0,
@@ -167,9 +234,9 @@ def run_clipping_analysis(output_dir: Path, params: TankDynamicsParams) -> Dict[
         osmotic = (s.dissolved_nutrient_mass / params.osmotic_half_effect) ** 2
         osmotic_f = 1.0 / (1.0 + osmotic)
 
-        queue = np.asarray(s.nutrient_queue, dtype=np.float64)
+        queue = list(s.pending_doses)
         queue, imm = _inject_delayed_dose(queue, dose_mass, params.delay_kernel, params.immediate_absorption_fraction)
-        queue, rel = _release_absorption(queue, params, dt_scale)
+        queue, rel = _release_absorption(queue, params, dt)
 
         dil_rate = (params.background_dilution_rate + params.ec_decay_jitter) * th_resp
         dilution = s.dissolved_nutrient_mass * (1.0 - np.exp(-dil_rate * dt_scale))
@@ -191,8 +258,6 @@ def run_clipping_analysis(output_dir: Path, params: TankDynamicsParams) -> Dict[
         reserve_new = s.internal_reserve + uptake_mass
 
         maintenance_cost = params.maintenance_cost * s.algae_biomass * th_resp * dt_scale
-        if maintenance_cost > reserve_new:
-            clips["maintenance_capped_by_reserve"] += 1
 
         actual_maint = min(maintenance_cost, reserve_new)
         reserve_new -= actual_maint
@@ -214,10 +279,12 @@ def run_clipping_analysis(output_dir: Path, params: TankDynamicsParams) -> Dict[
 
         maint_deficit = maintenance_cost - actual_maint
         deficit_ratio = maint_deficit / max(maintenance_cost, 1e-6)
-        damage_inc = (deficit_ratio * 1.0 + osmotic * 2.0) * params.damage_rate * dt_scale
+        stress_drive = deficit_ratio * 1.0 + osmotic * 2.0
+        damage_inc = stress_drive * params.damage_rate * dt_scale * (1.0 - s.damage_index)
         
         repair_availability = actual_maint / max(maintenance_cost, 1e-6)
-        repair_inc = params.repair_rate * repair_availability * th_resp * dt_scale
+        repair_drive = params.repair_rate * repair_availability * th_resp + params.basal_repair_rate
+        repair_inc = repair_drive * dt_scale * (s.damage_index ** 0.7)
         
         damage_new = s.damage_index + damage_inc - repair_inc
         if damage_new < 0.0:

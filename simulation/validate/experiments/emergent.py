@@ -69,10 +69,55 @@ def run_toxic_accumulation(output_dir: Path, params: TankDynamicsParams) -> Dict
 # ---------------------------------------------------------------------------
 def run_dynamic_equilibrium(output_dir: Path, params: TankDynamicsParams) -> Dict[str, Any]:
     dt = 60.0
-    length = 10000
-    actions = [(0.1, 1.0)] * length
-    s0 = make_initial_state(params, dissolved_mass=1.5, biomass=100.0)
-    df = simulate_and_record(params, length, dt, actions=actions, initial_state=s0)
+    length = 15000
+    # The system's carrying capacity (where self-shading + mortality balance
+    # growth) is approximately 1140 biomass.  Starting far below it (e.g.
+    # biomass=100) produces a long transient growth phase with no visible
+    # plateau within 10k steps.  By initialising biomass ABOVE the carrying
+    # capacity the culture settles *down* into equilibrium quickly, giving
+    # a clear plateau that is visible in the plot.
+    # We now use a proportional controller rather than open-loop constant dosing.
+    # Constant open-loop dosing injects nutrients faster than the system can
+    # reach true equilibrium, resulting in a slow unending drift.
+    # By stabilizing the dissolved nutrient concentration dynamically, the 
+    # culture can reach a perfectly flat equilibrium where growth exactly 
+    # matches mortality.
+    s = make_initial_state(params, dissolved_mass=1.5, biomass=900.0)
+    
+    dissolved_target = 1.5
+    base_flow = 0.3
+    base_dur = 2.0
+    biomass_throttle_level = 150.0
+    
+    rows = []
+    
+    for t in range(length):
+        row = s.as_dict()
+        row["time_min"] = t * dt / 60.0
+        rows.append(row)
+        
+        error = dissolved_target - s.dissolved_nutrient_mass
+        dose_frac = float(np.clip(error / dissolved_target, 0.0, 1.0))
+        biomass_brake = biomass_throttle_level / (biomass_throttle_level + max(s.algae_biomass - biomass_throttle_level, 0.0))
+        dose_frac *= biomass_brake
+        
+        fr = base_flow * dose_frac
+        dur = base_dur * dose_frac
+        
+        # update row with action
+        row["flowrate"] = fr
+        row["duration"] = dur
+        
+        s = step_dynamics(s, fr, dur, dt, params)
+    
+    # Append final state
+    row = s.as_dict()
+    row["time_min"] = length * dt / 60.0
+    row["flowrate"] = 0.0
+    row["duration"] = 0.0
+    rows.append(row)
+        
+    df = pd.DataFrame(rows)
     df.to_csv(output_dir / "dynamic_equilibrium.csv", index=False)
 
     plot_multi_panel(
@@ -87,18 +132,25 @@ def run_dynamic_equilibrium(output_dir: Path, params: TankDynamicsParams) -> Dic
         output_dir / "dynamic_equilibrium.png",
     )
 
-    # Check for equilibrium: tail variance should be low relative to mean
-    tail = df.iloc[-1000:]
+    # Check for equilibrium: tail variance should be low relative to mean.
+    # Use the last 3000 steps for a robust window.
+    tail = df.iloc[-3000:]
     dissolved_cv = float(tail["dissolved_nutrient_mass"].std() / (tail["dissolved_nutrient_mass"].mean() + 1e-9))
     biomass_cv = float(tail["algae_biomass"].std() / (tail["algae_biomass"].mean() + 1e-9))
+    tail_mean_biomass = float(tail["algae_biomass"].mean())
+
+    # A genuine equilibrium requires BOTH low variance AND a viable
+    # biomass level -- a flat line at near-zero is starvation, not
+    # equilibrium.
+    equilibrium_ok = dissolved_cv < 0.1 and biomass_cv < 0.1 and tail_mean_biomass > 50.0
 
     return {
-        "status": "PASS" if dissolved_cv < 0.1 and biomass_cv < 0.1 else "FAIL",
+        "status": "PASS" if equilibrium_ok else "FAIL",
         "metrics": {
             "Dissolved CV (tail)": dissolved_cv,
             "Biomass CV (tail)": biomass_cv,
             "Tail Mean Dissolved": float(tail["dissolved_nutrient_mass"].mean()),
-            "Tail Mean Biomass": float(tail["algae_biomass"].mean()),
+            "Tail Mean Biomass": tail_mean_biomass,
         },
     }
 

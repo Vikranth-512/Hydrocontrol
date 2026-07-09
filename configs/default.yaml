@@ -44,18 +44,21 @@ dynamics:
   max_queue_release_rate: 0.048
   release_damping: 0.85
   background_dilution_rate: 0.002
-  maximum_uptake_rate: 0.015
+  maximum_uptake_rate: 0.018
   half_saturation_mass: 1.0
   internal_capacity: 0.5
   maximum_growth_rate: 0.012
   growth_yield: 0.6
-  maintenance_cost: 0.001
+  maintenance_cost: 0.0005
   biomass_nutrient_content: 0.1
-  mortality_rate: 0.0005
+  mortality_rate: 0.0002
   mineralization_rate: 0.002
-  damage_rate: 0.05
-  repair_rate: 0.02
+  maintenance_to_detritus_fraction: 0.5
+  damage_rate: 0.0001
+  repair_rate: 0.01
   osmotic_half_effect: 5.0
+  basal_repair_rate: 0.0003
+  light_attenuation_half_mass: 250.0
   temp_ref: 25.0
   temp_opt: 26.0
   temp_sigma: 5.0
@@ -63,8 +66,8 @@ dynamics:
   temperature_rate_modifier: 2.0
   ambient_temp_mean: 22.0
   temp_relaxation_rate: 0.025
-  ec_decay_jitter: 0.0001
-  gain_jitter: 0.002
+  ec_decay_jitter: 0.0
+  gain_jitter: 0.0
 
 disturbances:
   ec_shock_prob: 0.02

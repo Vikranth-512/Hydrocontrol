@@ -70,7 +70,7 @@ def run_validation_suite(config: Dict[str, Any], output_dir: Path) -> Dict[str, 
             + s.internal_reserve 
             + s.algae_biomass * params.biomass_nutrient_content 
             + s.dead_biomass_pool 
-            + float(np.sum(s.nutrient_queue))
+            + s.pending_nutrients
             + s.cumulative_dilution
             + (fr * dur / 60.0) # dose
         )
@@ -85,22 +85,82 @@ def run_validation_suite(config: Dict[str, Any], output_dir: Path) -> Dict[str, 
     # 3. High-dose response (Osmotic Stress)
     length_high = 200
     t_axis_high = np.arange(length_high) * dt / 60.0
-    s0_high = TankState.create_initial(params, dissolved_mass=1.5, biomass=80.0)
-    # Huge continuous dosing
-    hist_high = simulate_open_loop(params, length_high, dt, actions=[(5.0, 30.0)] * length_high, initial_state=s0_high)
+    s_curr = TankState.create_initial(params, dissolved_mass=1.5, biomass=80.0)
     
-    fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
+    # We will run manually to capture fluxes
+    hist_high = {
+        "dissolved_nutrient_mass": [],
+        "algae_biomass": [],
+        "health_index": [],
+        "internal_reserve": [],
+        "ec": [],
+        "uptake_rate": [],
+        "maintenance_flux": [],
+        "mortality_flux": []
+    }
+    
+    for t in range(length_high):
+        s_next = step_dynamics(s_curr, 5.0, 30.0, dt, params)
+        hist_high["dissolved_nutrient_mass"].append(float(s_next.dissolved_nutrient_mass))
+        hist_high["algae_biomass"].append(float(s_next.algae_biomass))
+        hist_high["health_index"].append(float(s_next.health_index))
+        hist_high["internal_reserve"].append(float(s_next.internal_reserve))
+        hist_high["ec"].append(float(s_next.ec))
+        
+        # Calculate fluxes (per min)
+        # We can approximate them by looking at the change if we isolate it, but
+        # since we just need the rate, we can re-calculate the expected rate based on the states
+        # or just use the differences. Wait, actually, let's calculate the exact rates at s_curr
+        # Uptake
+        osmotic = (s_curr.dissolved_nutrient_mass / params.osmotic_half_effect) ** 2
+        osmotic_factor = 1.0 / (1.0 + osmotic)
+        light_factor = params.light_attenuation_half_mass**2 / (params.light_attenuation_half_mass**2 + s_curr.algae_biomass**2)
+        uptake = params.maximum_uptake_rate * (s_curr.dissolved_nutrient_mass / (params.half_saturation_mass + s_curr.dissolved_nutrient_mass)) * osmotic_factor * s_curr.algae_biomass
+        
+        # Maintenance
+        maint = params.maintenance_cost * s_curr.algae_biomass
+        
+        # Mortality
+        mort = params.mortality_rate * np.log1p(osmotic) * max(1.0, (10.0 * s_curr.damage_index)**2) * s_curr.algae_biomass
+        
+        hist_high["uptake_rate"].append(float(uptake))
+        hist_high["maintenance_flux"].append(float(maint))
+        hist_high["mortality_flux"].append(float(mort))
+        
+        s_curr = s_next
+        
+    for k in hist_high:
+        hist_high[k] = np.array(hist_high[k])
+    
+    fig, axes = plt.subplots(6, 1, figsize=(12, 16), sharex=True)
+    axes[0].plot(t_axis_high, hist_high["ec"], label="EC Sensor")
     axes[0].plot(t_axis_high, hist_high["dissolved_nutrient_mass"], label="Dissolved Nutrient")
-    axes[0].set_ylabel("Mass")
+    axes[0].set_ylabel("Mass / EC")
     axes[0].set_title("Continuous High Dosing: Accumulation & Osmotic Stress")
     axes[0].legend()
-    axes[1].plot(t_axis_high, hist_high["algae_biomass"], color="green", label="Biomass")
+    
+    axes[1].plot(t_axis_high, hist_high["internal_reserve"], color="orange", label="Internal Reserve")
     axes[1].set_ylabel("Mass")
     axes[1].legend()
+    
     axes[2].plot(t_axis_high, hist_high["health_index"], color="red", label="Health Index")
     axes[2].set_ylabel("Index (0-1)")
-    axes[2].set_xlabel("Time (min)")
     axes[2].legend()
+    
+    axes[3].plot(t_axis_high, hist_high["algae_biomass"], color="green", label="Biomass")
+    axes[3].set_ylabel("Mass")
+    axes[3].legend()
+    
+    axes[4].plot(t_axis_high, hist_high["uptake_rate"], color="blue", label="Uptake Rate")
+    axes[4].plot(t_axis_high, hist_high["maintenance_flux"], color="brown", linestyle="--", label="Maintenance Req")
+    axes[4].set_ylabel("Rate (mass/min)")
+    axes[4].legend()
+    
+    axes[5].plot(t_axis_high, hist_high["mortality_flux"], color="purple", label="Mortality Rate")
+    axes[5].set_ylabel("Rate (mass/min)")
+    axes[5].set_xlabel("Time (min)")
+    axes[5].legend()
+    
     fig.tight_layout()
     fig.savefig(output_dir / "03_high_dose_stress.png", dpi=150)
     plt.close(fig)

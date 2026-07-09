@@ -58,7 +58,7 @@ class SyntheticTrajectoryGenerator:
             noise_std=sim.get("noise_std"),
         )
 
-        self.base_params = TankDynamicsParams.from_config(dyn, ec_target=self.ec_target)
+        self.base_params = TankDynamicsParams.from_config(dyn)
         self.disturbance_config = DisturbanceConfig.from_config(dist_cfg)
 
         self.length_min = sim.get("trajectory_length_min", 100)

@@ -52,24 +52,29 @@ class TankDynamicsParams:
     background_dilution_rate: float = 0.002
 
     # Biology (Uptake & Reserve)
-    maximum_uptake_rate: float = 0.015
+    maximum_uptake_rate: float = 0.018
     half_saturation_mass: float = 1.0
     internal_capacity: float = 0.5  # Max reserve per unit of biomass
     
     # Biology (Growth & Maintenance)
     maximum_growth_rate: float = 0.012
     growth_yield: float = 0.6       # Fraction of consumed reserve that becomes biomass
-    maintenance_cost: float = 0.001
+    maintenance_cost: float = 0.0005
     biomass_nutrient_content: float = 0.1 # Fraction of biomass that is structural nutrient
     
     # Biology (Mortality & Recycling)
-    mortality_rate: float = 0.0005
+    mortality_rate: float = 0.0002
     mineralization_rate: float = 0.002
+    maintenance_to_detritus_fraction: float = 0.5
     
     # Biology (Health & Damage)
-    damage_rate: float = 0.001
-    repair_rate: float = 0.0005
+    damage_rate: float = 0.0001
+    repair_rate: float = 0.01
     osmotic_half_effect: float = 5.0
+    basal_repair_rate: float = 0.0003
+    
+    # Biology (Density Dependence)
+    light_attenuation_half_mass: float = 250.0
     
     # Temperature
     temp_ref: float = 25.0
@@ -130,7 +135,7 @@ class TankState:
     step_index: int = 0
     
     # Hidden physical state
-    nutrient_queue: np.ndarray = field(default_factory=lambda: np.zeros(5))
+    pending_doses: List[Tuple[float, float]] = field(default_factory=list) # (mass, time_left)
     dissolved_nutrient_mass: float = 1.5
     algae_biomass: float = 80.0
     internal_reserve: float = 10.0
@@ -141,6 +146,10 @@ class TankState:
     # Cached sensor observations (readonly mapping from physical state)
     ec: float = 1.2
     turbidity: float = 176.0
+
+    @property
+    def pending_nutrients(self) -> float:
+        return sum(mass for mass, _ in self.pending_doses)
 
     def as_dict(self) -> dict:
         return {
@@ -162,7 +171,7 @@ class TankState:
             "damage_index": self.damage_index,
             "ec": self.ec,
             "turbidity": self.turbidity,
-            "pending_nutrients": float(np.sum(self.nutrient_queue)),
+            "pending_nutrients": self.pending_nutrients,
         }
 
     def compute_total_mass(self, params: TankDynamicsParams) -> float:
@@ -172,7 +181,7 @@ class TankState:
             + self.internal_reserve
             + self.algae_biomass * params.biomass_nutrient_content
             + self.dead_biomass_pool
-            + float(np.sum(self.nutrient_queue))
+            + self.pending_nutrients
             + self.cumulative_dilution
         )
 
@@ -195,7 +204,7 @@ class TankState:
             ph=7.2 + rng.normal(0, 0.05),
             dissolved_oxygen=8.0 + rng.normal(0, 0.2),
             ambient_temp=params.ambient_temp_mean,
-            nutrient_queue=np.zeros(params.delay_steps, dtype=np.float64),
+            pending_doses=[],
             dissolved_nutrient_mass=float(dm0),
             algae_biomass=float(b0),
             internal_reserve=float(b0 * params.internal_capacity * 0.5), # start half full
@@ -223,46 +232,55 @@ def thermal_efficiency(temp: float, params: TankDynamicsParams) -> float:
 
 
 def _inject_delayed_dose(
-    queue: np.ndarray,
+    queue: List[Tuple[float, float]],
     dose_mass: float,
     kernel: Tuple[float, ...],
     immediate_frac: float,
-) -> Tuple[np.ndarray, float]:
+) -> Tuple[List[Tuple[float, float]], float]:
     immediate = immediate_frac * dose_mass
     delayed_mass = (1.0 - immediate_frac) * dose_mass
     k = np.asarray(kernel, dtype=np.float64)
     k = k / (k.sum() + 1e-12)
-    queue = queue.copy()
-    n = min(len(queue), len(k))
-    for i in range(n):
-        queue[i] += delayed_mass * k[i]
-    return queue, immediate
+    
+    new_queue = list(queue)
+    for i, frac in enumerate(k):
+        mass = delayed_mass * frac
+        if mass > 1e-6:
+            # Kernel slots represent 1-minute (60s) delays
+            delay_seconds = (i + 1) * 60.0
+            new_queue.append((mass, delay_seconds))
+            
+    return new_queue, immediate
 
 
 def _release_absorption(
-    queue: np.ndarray,
+    queue: List[Tuple[float, float]],
     params: TankDynamicsParams,
-    dt_scale: float,
-) -> Tuple[np.ndarray, float]:
-    # Removed mass-destroying queue damping
-    raw_release = float(queue[0]) if len(queue) else 0.0
+    dt: float,
+) -> Tuple[List[Tuple[float, float]], float]:
+    new_queue = []
+    released = 0.0
+    
+    # Process each pending dose, reducing its timer
+    for mass, time_left in queue:
+        time_left -= dt
+        if time_left <= 0:
+            released += mass
+        else:
+            new_queue.append((mass, time_left))
+            
+    # Apply release rate cap (FIFO logic: put unreleased mass back with small/zero delay)
+    dt_scale = dt / 60.0
     cap = params.max_queue_release_rate * max(dt_scale, 0.01)
-    released = min(raw_release, cap)
-    if len(queue) > 0:
-        leftover = max(0.0, queue[0] - released)
-    else:
-        leftover = 0.0
+    if released > cap:
+        leftover = released - cap
+        released = cap
+        # Push leftover back into queue. 
+        # By giving it a tiny positive time, we prevent zero-time artifacts while
+        # keeping it at the front of the FIFO line for the next step.
+        new_queue.append((leftover, 1e-6))
         
-    if len(queue) > 1:
-        # Shift the queue forward
-        queue[:-1] = queue[1:]
-        queue[-1] = 0.0
-        # Add leftover back to the new front so it isn't lost
-        queue[0] += leftover
-    elif len(queue) == 1:
-        queue[0] = leftover
-
-    return queue, released
+    return new_queue, released
 
 
 def step_dynamics(
@@ -285,13 +303,11 @@ def step_dynamics(
     dose_mass = flowrate * duration / 60.0 * dist.actuator_efficiency
     cumulative = state.cumulative_nutrients + dose_mass
     
-    queue = np.asarray(state.nutrient_queue, dtype=np.float64)
-    if len(queue) != params.delay_steps:
-        queue = np.zeros(params.delay_steps, dtype=np.float64)
+    queue = list(state.pending_doses)
     queue, immediate_mass = _inject_delayed_dose(
         queue, dose_mass, params.delay_kernel, params.immediate_absorption_fraction
     )
-    queue, released_mass = _release_absorption(queue, params, dt_scale)
+    queue, released_mass = _release_absorption(queue, params, dt)
 
     # Global Modifiers
     thermal_growth = thermal_efficiency(state.water_temp, params)
@@ -309,6 +325,12 @@ def step_dynamics(
     mineralized = state.dead_biomass_pool * (1.0 - np.exp(-min_rate * dt_scale))
 
     dissolved_new = state.dissolved_nutrient_mass + immediate_mass + released_mass + mineralized - dilution
+
+    # Density dependence through self-shading (Hill function, n=2)
+    # Gentle near equilibrium, sharp suppression at high density
+    # Approximates nonlinear Beer-Lambert light attenuation in dense cultures
+    L2 = params.light_attenuation_half_mass ** 2
+    light_factor = L2 / (L2 + state.algae_biomass ** 2)
 
     # 3. Uptake Kinetics (Monod)
     max_reserve = state.algae_biomass * params.internal_capacity
@@ -331,17 +353,21 @@ def step_dynamics(
     dissolved_new -= uptake_mass
     reserve_new = state.internal_reserve + uptake_mass
 
-    # 4. Maintenance (Consumes reserve, waste recycled to dissolved pool)
+    # 4. Maintenance (Consumes reserve, waste split between dissolved pool and dead pool)
     maintenance_cost = params.maintenance_cost * state.algae_biomass * thermal_respiration * dt_scale
     actual_maintenance = min(maintenance_cost, reserve_new)
     reserve_new -= actual_maintenance
     maintenance_deficit = maintenance_cost - actual_maintenance
-    dissolved_new += actual_maintenance # Nutrients recycled via maintenance waste
+    
+    maint_to_dissolved = actual_maintenance * (1.0 - params.maintenance_to_detritus_fraction)
+    maint_to_dead = actual_maintenance * params.maintenance_to_detritus_fraction
+    dissolved_new += maint_to_dissolved
 
     # 5. Biomass Growth
     reserve_ratio = reserve_new / max(state.algae_biomass * params.internal_capacity, 1e-6)
+    
     growth_drive = reserve_ratio * thermal_growth * osmotic_factor
-    growth_amount = params.maximum_growth_rate * growth_drive * state.algae_biomass * dt_scale
+    growth_amount = params.maximum_growth_rate * growth_drive * light_factor * state.algae_biomass * dt_scale
 
     nutrient_cost_per_biomass = params.biomass_nutrient_content / params.growth_yield
     required_reserve = growth_amount * nutrient_cost_per_biomass
@@ -358,7 +384,9 @@ def step_dynamics(
     # 6. Mortality
     # Mortality increases with heat/cold stress, using Arrhenius/Q10 behavior
     thermal_stress = thermal_respiration
-    mortality_rate = params.mortality_rate * thermal_stress * (1.0 + osmotic_stress) * (2.0 - state.health_index)
+    damage_penalty = 1.0 + 5.0 * (state.damage_index ** 2)
+    osmotic_penalty = 1.0 + np.log1p(osmotic_stress)
+    mortality_rate = params.mortality_rate * thermal_stress * osmotic_penalty * damage_penalty
     mortality_amount = biomass_new * (1.0 - np.exp(-mortality_rate * dt_scale))
 
     biomass_new -= mortality_amount
@@ -366,16 +394,18 @@ def step_dynamics(
     proportional_reserve = reserve_new * (mortality_amount / max(biomass_new + mortality_amount, 1e-6))
     
     reserve_new -= proportional_reserve
-    dead_pool_new = state.dead_biomass_pool - mineralized + dead_nutrient + proportional_reserve
+    dead_pool_new = state.dead_biomass_pool - mineralized + dead_nutrient + proportional_reserve + maint_to_dead
 
     # 7. Health Evolution
-    # Damage uses dimensionless intensive ratio (recalibrated weights for timescale)
+    # Damage uses dimensionless intensive ratio with logistic bounded kinetics
     deficit_ratio = maintenance_deficit / max(maintenance_cost, 1e-6)
-    damage_inc = (deficit_ratio * 1.0 + osmotic_stress * 2.0) * params.damage_rate * dt_scale
+    stress_drive = deficit_ratio * 1.0 + osmotic_stress * 2.0
+    damage_inc = stress_drive * params.damage_rate * dt_scale * (1.0 - state.damage_index)
     
-    # Repair is based on maintenance flux being met
+    # Repair is based on maintenance flux being met, with a basal rate and damage power scaling
     repair_availability = actual_maintenance / max(maintenance_cost, 1e-6)
-    repair_inc = params.repair_rate * repair_availability * thermal_respiration * dt_scale
+    repair_drive = params.repair_rate * repair_availability * thermal_respiration + params.basal_repair_rate
+    repair_inc = repair_drive * dt_scale * (state.damage_index ** 0.7)
 
     damage_new = state.damage_index + damage_inc - repair_inc
     damage_new = float(np.clip(damage_new, 0.0, 1.0))
@@ -410,7 +440,7 @@ def step_dynamics(
         cumulative_dilution=state.cumulative_dilution + dilution,
         step_index=state.step_index + 1,
         
-        nutrient_queue=queue,
+        pending_doses=queue,
         dissolved_nutrient_mass=dissolved_new,
         algae_biomass=biomass_new,
         internal_reserve=reserve_new,

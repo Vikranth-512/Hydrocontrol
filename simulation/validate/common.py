@@ -97,7 +97,7 @@ def make_initial_state(
         ph=7.2,
         dissolved_oxygen=8.0,
         ambient_temp=params.ambient_temp_mean,
-        nutrient_queue=np.zeros(params.delay_steps, dtype=np.float64),
+        pending_doses=[],
         dissolved_nutrient_mass=float(dissolved_mass),
         algae_biomass=float(biomass),
         internal_reserve=float(reserve),

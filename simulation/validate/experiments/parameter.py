@@ -39,11 +39,20 @@ SENSITIVE_PARAMS = [
 ]
 
 
-def _run_baseline(params: TankDynamicsParams, length: int, dt: float, actions):
+def _run_baseline(params: TankDynamicsParams, warmup_length: int, test_length: int, warmup_actions, test_actions, dt: float):
     s = make_initial_state(params, dissolved_mass=2.0, biomass=100.0)
-    for t in range(length):
-        fr, dur = actions[t]
+    for t in range(warmup_length):
+        fr, dur = warmup_actions[t]
         s = step_dynamics(s, fr, dur, dt, params)
+        if s.algae_biomass < 1.0:
+            return s
+            
+    for t in range(test_length):
+        fr, dur = test_actions[t]
+        s = step_dynamics(s, fr, dur, dt, params)
+        if s.algae_biomass < 1.0:
+            return s
+            
     return s
 
 
@@ -52,26 +61,28 @@ def _run_baseline(params: TankDynamicsParams, length: int, dt: float, actions):
 # ---------------------------------------------------------------------------
 def run_oat_sensitivity(output_dir: Path, params: TankDynamicsParams) -> Dict[str, Any]:
     dt = 60.0
-    length = 400
-    actions = [(1.5, 15.0)] * length
+    warmup_length = 500
+    test_length = 400
+    
+    # Moderate continuous dosing to reach quasi-steady state
+    warmup_actions = [(0.1, 10.0)] * warmup_length
+    # Test phase dosing
+    test_actions = [(1.5, 15.0)] * test_length
 
     # Baseline run
-    baseline = _run_baseline(params, length, dt, actions)
+    baseline = _run_baseline(params, warmup_length, test_length, warmup_actions, test_actions, dt)
     baseline_ec = baseline.ec
     baseline_biomass = baseline.algae_biomass
     baseline_health = baseline.health_index
 
     rows = []
-    sensitivities_ec = []
-    sensitivities_biomass = []
-    sensitivities_health = []
 
     for pname in SENSITIVE_PARAMS:
         base_val = getattr(params, pname)
         for direction, multiplier in [("+10%", 1.10), ("-10%", 0.90)]:
             p_mod = copy.deepcopy(params)
             setattr(p_mod, pname, base_val * multiplier)
-            result = _run_baseline(p_mod, length, dt, actions)
+            result = _run_baseline(p_mod, warmup_length, test_length, warmup_actions, test_actions, dt)
 
             delta_ec = (result.ec - baseline_ec) / (baseline_ec + 1e-12)
             delta_bio = (result.algae_biomass - baseline_biomass) / (baseline_biomass + 1e-12)

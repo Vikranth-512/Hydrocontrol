@@ -69,7 +69,7 @@ class OptimizationLabeler:
         self.tie_break_epsilon = float(lab.get("tie_break_epsilon", 0.0))
 
         self.base_params = TankDynamicsParams.from_config(
-            dyn, ec_target=self.ec_target
+            dyn
         )
         self.trajectory_index_padding = get_trajectory_index_padding(config)
         self._diagnostic_samples: List[dict] = []
@@ -81,11 +81,8 @@ class OptimizationLabeler:
             col = f"true_{name}" if f"true_{name}" in row.index else name
             return float(row[col]) if col in row.index and pd.notna(row[col]) else default
 
-        n_delay = self.base_params.delay_steps
-        queue = np.zeros(n_delay, dtype=np.float64)
         pending = _get("pending_nutrients", 0.0)
-        if pending > 0 and n_delay > 0:
-            queue[0] = pending
+        queue = [(pending, 60.0)] if pending > 0 else []
 
         return TankState(
             water_temp=_get("water_temp", 22.0),
@@ -98,15 +95,15 @@ class OptimizationLabeler:
             dissolved_oxygen=_get("dissolved_oxygen", 8.0),
             ambient_temp=_get("ambient_temp", 22.0),
             cumulative_nutrients=_get("cumulative_nutrients", 0.0),
+            cumulative_dilution=_get("cumulative_dilution", 0.0),
             step_index=int(row.get("timestep", 0)),
-            absorption_queue=queue,
-            algae_biomass=_get("algae_biomass", _get("turbidity", 80.0)),
-            nutrient_memory=_get("nutrient_memory", 0.0),
-            biomass_memory=_get("biomass_memory", 0.5),
-            biomass_growth_drive=_get("biomass_growth_drive", 0.5),
+            pending_doses=queue,
+            dissolved_nutrient_mass=_get("dissolved_nutrient_mass", 1.5),
+            algae_biomass=_get("algae_biomass", 80.0),
+            internal_reserve=_get("internal_reserve", 10.0),
+            dead_biomass_pool=_get("dead_biomass_pool", 0.0),
             health_index=_get("health_index", 1.0),
-            ec_velocity=_get("ec_velocity", 0.0),
-            assimilation_pool=_get("assimilation_pool", 0.0),
+            damage_index=_get("damage_index", 0.0),
         )
 
     @staticmethod
@@ -115,7 +112,7 @@ class OptimizationLabeler:
             np.isfinite(s.ec)
             and np.isfinite(s.turbidity)
             and np.isfinite(s.water_temp)
-            and np.isfinite(s.nutrient_memory)
+            and np.isfinite(s.dissolved_nutrient_mass)
             and np.isfinite(s.algae_biomass)
         )
 
