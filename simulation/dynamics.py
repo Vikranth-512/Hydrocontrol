@@ -71,6 +71,7 @@ class TankDynamicsParams:
     damage_rate: float = 0.0001
     repair_rate: float = 0.01
     osmotic_half_effect: float = 5.0
+    osmotic_safe_threshold: float = 0.2
     basal_repair_rate: float = 0.0003
     
     # Biology (Density Dependence)
@@ -129,7 +130,7 @@ class TankState:
     ambient_temp: float = 22.0
     prev_flowrate: float = 0.0
     prev_duration: float = 0.0
-    time_since_last_dose: float = 999.0
+    time_since_last_dose: float = 120.0  # Initialized to min_time_between_doses for realistic actuator history
     cumulative_nutrients: float = 0.0
     cumulative_dilution: float = 0.0
     step_index: int = 0
@@ -199,11 +200,16 @@ class TankState:
         b0 = biomass if biomass is not None else 80.0 + rng.uniform(0, 10)
         wt = water_temp if water_temp is not None else params.ambient_temp_mean + rng.normal(0, 0.5)
         
+        # Initialize time_since_last_dose with realistic distribution
+        # Use uniform(120, 300) to represent varied actuator history
+        time_since = rng.uniform(120.0, 300.0)
+        
         s = cls(
             water_temp=float(wt),
             ph=7.2 + rng.normal(0, 0.05),
             dissolved_oxygen=8.0 + rng.normal(0, 0.2),
             ambient_temp=params.ambient_temp_mean,
+            time_since_last_dose=time_since,
             pending_doses=[],
             dissolved_nutrient_mass=float(dm0),
             algae_biomass=float(b0),

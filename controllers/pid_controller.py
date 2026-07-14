@@ -1,7 +1,13 @@
 """
-Research-grade PID for EC setpoint → (flowrate, duration).
+PID controller for algae ecosystem regulation.
 
-Features: anti-windup, derivative filtering, deadband, output saturation, rate limiting.
+Two controlled-variable modes:
+  compute(ec)               — legacy EC setpoint tracking (backward compat)
+  compute_from_reserve(state) — ecosystem heuristic baseline: regulate reserve
+                               ratio toward rho_setpoint (Droop half-quota)
+
+All PID internals (anti-windup, derivative filtering, deadband, output
+saturation, rate limiting) are identical in both modes.
 """
 
 from __future__ import annotations
@@ -132,3 +138,38 @@ class PIDController:
         self._prev_flowrate = flowrate
         self._prev_duration = duration
         return float(flowrate), float(duration)
+
+    def compute_from_reserve(
+        self,
+        state: "TankState",  # type: ignore[name-defined]
+        internal_capacity: float = 0.5,
+    ) -> tuple[float, float]:
+        """
+        Ecosystem heuristic baseline: regulate reserve ratio toward self.setpoint.
+
+        Reserve ratio rho = internal_reserve / (biomass * internal_capacity).
+        self.setpoint should be the target rho (e.g. 0.50 — Droop half-quota).
+
+        Dosing is triggered when rho < setpoint (algae are becoming starved).
+        Dosing is suppressed when rho >= setpoint (reserves are full enough).
+
+        All PID math (anti-windup, derivative filtering, deadband, saturation,
+        rate limiting) is reused via delegation to self.compute().
+        """
+        B = max(float(getattr(state, "algae_biomass", 1.0)), 1e-6)
+        reserve = float(getattr(state, "internal_reserve", 0.0))
+        rho = float(np.clip(reserve / (B * internal_capacity), 0.0, 1.0))
+        ec = float(getattr(state, "ec", 0.0))
+        
+        fr, dur = self.compute(rho)
+        
+        # Override: Prevent osmotic shock during severe disturbances
+        # Soft EC ceiling: reduce dosing smoothly to 0 as EC approaches 2.0.
+        # This keeps self.compute() running for anti-windup, but throttles the pump.
+        ec_headroom = max(0.0, 2.0 - ec)
+        ec_scale = min(1.0, ec_headroom / 0.5)  # Starts throttling at EC=1.5
+        
+        # Scale flowrate by biomass to prevent osmotic shock during population crashes
+        biomass_scale = min(1.0, B / 80.0)
+        
+        return fr * biomass_scale * ec_scale, dur

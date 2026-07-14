@@ -167,6 +167,39 @@ class PIDTuningPlotter:
         plt.close(fig)
         return path
 
+    def plot_long_horizon_health(self, trace: Dict, name: str = "long_horizon_health") -> Path:
+        if not trace or "biomass" not in trace:
+            return self.output_dir / f"{name}.png"
+        
+        t = np.arange(len(trace["biomass"])) * trace.get("dt", 60.0) / 60.0
+        fig, axes = plt.subplots(3, 1, figsize=(11, 8), sharex=True)
+        
+        axes[0].plot(t, trace["biomass"], color="forestgreen", lw=1.5)
+        axes[0].set_ylabel("Biomass (g)")
+        axes[0].set_title("Ecosystem Biomass")
+        
+        axes[1].plot(t, trace["rho"], color="darkorange", lw=1.5)
+        axes[1].axhline(0.20, color="r", linestyle=":", alpha=0.7, label="Starvation threshold")
+        axes[1].set_ylabel("Reserve Ratio (ρ)")
+        axes[1].set_ylim(0.0, 1.0)
+        axes[1].legend(loc="upper right")
+        axes[1].set_title("Internal Nutrient Reserves")
+        
+        axes[2].plot(t, trace["health"], color="mediumblue", lw=1.5)
+        axes[2].axhline(0.70, color="r", linestyle=":", alpha=0.7, label="Critical health")
+        axes[2].set_ylabel("Health Index")
+        axes[2].set_ylim(0.0, 1.05)
+        axes[2].set_xlabel("Time (min)")
+        axes[2].legend(loc="lower right")
+        axes[2].set_title("Population Health")
+        
+        fig.suptitle("Tuned PID — Long Horizon Ecosystem Health", fontsize=14)
+        fig.tight_layout()
+        path = self.output_dir / f"{name}.png"
+        fig.savefig(path, dpi=150)
+        plt.close(fig)
+        return path
+
     def plot_all(self, results: Dict[str, Any], config: Dict[str, Any]) -> None:
         self.plot_gain_heatmaps(results.get("coarse", []))
         self.plot_ranking_table(results)
@@ -175,6 +208,7 @@ class PIDTuningPlotter:
             self.plot_ec_trajectory(trace)
             self.plot_dosing(trace)
             self.plot_oscillation_analysis(trace)
+            self.plot_long_horizon_health(trace)
         best = results.get("best")
         if best:
             self.plot_disturbance_recovery(config, best)

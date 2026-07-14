@@ -27,47 +27,70 @@ def compute_prediction_metrics(
     return metrics
 
 
-def compute_control_metrics(
-    ec_trace: np.ndarray,
-    ec_target: float,
+def compute_ecosystem_metrics(
+    state_trace: List["TankState"],  # type: ignore[name-defined]
     flowrates: np.ndarray,
     durations: np.ndarray,
+    params: "TankDynamicsParams",  # type: ignore[name-defined]
     dt: float = 60.0,
+    b_bloom_threshold: float = 300.0,
 ) -> Dict[str, float]:
     """
-    Control metrics: overshoot, settling time, stability variance,
-    nutrient efficiency, cumulative cost.
+    Ecosystem regulation metrics. No EC reference needed for primary score.
     """
-    ec = np.asarray(ec_trace)
-    errors = ec - ec_target
+    if not state_trace:
+        return {}
 
-    overshoot = float(np.max(np.maximum(0.0, ec - ec_target)))
+    B = np.array([max(s.algae_biomass, 1e-6) for s in state_trace])
+    H = np.array([s.health_index for s in state_trace])
+    D = np.array([s.damage_index for s in state_trace])
+    ec = np.array([s.ec for s in state_trace])
+    
+    # Reserve ratio (rho)
+    ic = params.internal_capacity
+    rho = np.array([s.internal_reserve / (B[i] * ic) for i, s in enumerate(state_trace)])
+    rho = np.clip(rho, 0.0, 1.0)
 
-    # Settling: first time |error| < 5% of target and stays (simplified)
-    band = 0.05 * ec_target
-    settled_idx = len(ec) - 1
-    for i in range(len(ec)):
-        if np.all(np.abs(ec[i:] - ec_target) < band) if i < len(ec) - 1 else abs(ec[i] - ec_target) < band:
-            settled_idx = i
-            break
-    settling_time = float(settled_idx * dt)
+    tail_n = max(20, int(len(H) * 0.35))
+    H_tail = H[-tail_n:]
+    B_tail = B[-tail_n:]
+    rho_all = rho
 
-    stability_variance = float(np.var(ec))
-
-    dose_per_step = flowrates * durations / 60.0
-    cumulative_cost = float(np.sum(dose_per_step))
-    ec_mae = float(np.mean(np.abs(errors)))
-
-    # Efficiency: lower cost per unit EC accuracy
-    nutrient_efficiency = ec_mae / (cumulative_cost + 1e-6)
+    dose = flowrates * durations / 60.0
+    total_dose = float(np.sum(dose))
 
     return {
-        "overshoot": overshoot,
-        "settling_time": settling_time,
-        "stability_variance": stability_variance,
-        "cumulative_dosing_cost": cumulative_cost,
-        "ec_mae": ec_mae,
-        "nutrient_efficiency": nutrient_efficiency,
+        # Primary ecosystem health
+        "health_mean":          float(np.mean(H)),
+        "health_mean_tail":     float(np.mean(H_tail)),
+        "damage_mean":          float(np.mean(D)),
+        "damage_cumulative":    float(np.sum(np.maximum(0.0, np.diff(D, prepend=D[0])))),
+
+        # Reserve / starvation risk
+        "reserve_mean":         float(np.mean(rho_all)),
+        "reserve_floor_frac":   float(np.mean(rho_all > 0.20)),
+        "starvation_fraction":  float(np.mean(rho_all < 0.10)),
+
+        # Biomass stability
+        "biomass_mean":         float(np.mean(B_tail)),
+        "biomass_cv_tail":      float(np.std(B_tail) / (np.mean(B_tail) + 1e-6)),
+        "bloom_fraction":       float(np.mean(B > b_bloom_threshold)),
+
+        # Collapse risk
+        "collapse_free_duration": int(np.argmax(H < 0.20)) if np.any(H < 0.20) else len(H),
+        "biomass_persistence":  float(np.mean(B > 20.0)),
+
+        # Efficiency
+        "total_dose":           total_dose,
+        "dose_per_health":      float(total_dose / (np.mean(H) * len(H) + 1e-6)),
+        "control_smoothness":   float(np.mean(np.diff(flowrates, prepend=flowrates[0])**2)),
+
+        # Secondary EC diagnostics (reported, not optimized)
+        "ec_mean":              float(np.mean(ec)),
+        "ec_std":               float(np.std(ec)),
+        "ec_min":               float(np.min(ec)),
+        "ec_max":               float(np.max(ec)),
+        "ec_range":             float(np.max(ec) - np.min(ec)),
     }
 
 

@@ -19,9 +19,9 @@ from models.lstm_policy import LSTMPolicy
 from preprocessing.feature_engineering import FeatureEngineer
 from preprocessing.normalization import FeatureNormalizer
 from simulation.disturbances import DisturbanceConfig, DisturbanceGenerator
-from simulation.dynamics import TankDynamicsParams
+from simulation.dynamics import TankDynamicsParams, TankState
 from simulation.environment import AlgaeTankEnvironment, EnvironmentConfig
-from training.evaluation import compute_control_metrics
+from training.evaluation import compute_ecosystem_metrics
 
 
 class ClosedLoopEvaluator:
@@ -113,11 +113,13 @@ class ClosedLoopEvaluator:
         history = {
             k: []
             for k in keys
-            + ["ec_true", "turbidity_true", "flowrate", "duration", "pending_absorption", "health_index"]
+            + ["ec_true", "turbidity_true", "flowrate", "duration", "pending_nutrients", "health_index"]
         }
         rolling_rows = []
+        state_trace: List[TankState] = []
 
         for t in range(length):
+            state_trace.append(env.state)
             obs_dict = {keys[i]: float(obs[i]) for i in range(len(keys))}
             if scenario == "missing_data" and t % 17 == 0:
                 obs_dict["ec"] = float("nan")
@@ -144,8 +146,8 @@ class ClosedLoopEvaluator:
                 history[k].append(v)
             history["ec_true"].append(env.state.ec if env.state else ec_for_ctrl)
             history["turbidity_true"].append(env.state.turbidity if env.state else 0.0)
-            history["pending_absorption"].append(
-                float(np.sum(env.state.absorption_queue)) if env.state else 0.0
+            history["pending_nutrients"].append(
+                env.state.pending_nutrients if env.state else 0.0
             )
             history["health_index"].append(env.state.health_index if env.state else 0.0)
             history["flowrate"].append(fr)
@@ -158,6 +160,7 @@ class ClosedLoopEvaluator:
             "ec": ec_trace,
             "flowrate": np.array(history["flowrate"]),
             "duration": np.array(history["duration"]),
+            "state_trace": state_trace,
             "history": {k: np.array(v) for k, v in history.items()},
         }
 
@@ -184,8 +187,8 @@ class ClosedLoopEvaluator:
             return pid.compute(obs_dict["ec"])
 
         traj = self.run_episode(ctrl, scenario=scenario)
-        metrics = compute_control_metrics(
-            traj["ec"], self.ec_target, traj["flowrate"], traj["duration"], self.dt
+        metrics = compute_ecosystem_metrics(
+            traj["state_trace"], traj["flowrate"], traj["duration"], self.params, self.dt
         )
         return {"trajectory": traj, "metrics": metrics, "controller": "pid"}
 
@@ -204,8 +207,8 @@ class ClosedLoopEvaluator:
             return rb.compute(obs_dict["ec"])
 
         traj = self.run_episode(ctrl, scenario=scenario)
-        metrics = compute_control_metrics(
-            traj["ec"], self.ec_target, traj["flowrate"], traj["duration"], self.dt
+        metrics = compute_ecosystem_metrics(
+            traj["state_trace"], traj["flowrate"], traj["duration"], self.params, self.dt
         )
         return {"trajectory": traj, "metrics": metrics, "controller": "rule_based"}
 
@@ -237,8 +240,8 @@ class ClosedLoopEvaluator:
             )
 
         traj = self.run_episode(ctrl, scenario=scenario)
-        metrics = compute_control_metrics(
-            traj["ec"], self.ec_target, traj["flowrate"], traj["duration"], self.dt
+        metrics = compute_ecosystem_metrics(
+            traj["state_trace"], traj["flowrate"], traj["duration"], self.params, self.dt
         )
         return {"trajectory": traj, "metrics": metrics, "controller": "lstm_policy"}
 

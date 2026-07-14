@@ -1,11 +1,13 @@
 """
-Optimization-based pseudo-optimal control labels — Option B: Precision Regulation.
+Optimization-based pseudo-optimal control labels — Ecosystem Regulation.
 
-Long-horizon rollout with modular multi-objective scoring favoring:
-  - tight setpoint tracking (time-weighted)
-  - fast recovery into target band
-  - controlled corrective aggression
-  - bounded oscillation / nonlinear overshoot safety
+Long-horizon rollout with multi-objective ecosystem health scoring:
+  - health preservation
+  - reserve stability (starvation prevention)
+  - damage minimization
+  - bloom prevention (asymmetric biomass growth rate)
+  - dosing efficiency
+  - terminal sustainability
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from simulation.dynamics import TankDynamicsParams, TankState, step_dynamics
+from simulation.dynamics import TankDynamicsParams, TankState, step_dynamics, q10_metabolism_factor
 from simulation.labeling_objective import (
     CostBreakdown,
     LabelingObjectiveConfig,
@@ -46,7 +48,10 @@ class OptimizationLabeler:
         sim = config.get("simulation", {})
         dyn = config.get("dynamics", {})
 
-        self.obj_cfg = LabelingObjectiveConfig.from_yaml(lab, sim, dyn)
+        self.obj_cfg = LabelingObjectiveConfig.from_yaml(
+            lab, sim, dyn,
+            eco=config.get("ecosystem_control", {}),
+        )
         self.horizon = self.obj_cfg.horizon
         self.debug_mode = self.obj_cfg.debug_mode
 
@@ -57,6 +62,15 @@ class OptimizationLabeler:
         self.candidate_durations = lab.get(
             "candidate_durations", [0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0]
         )
+
+        # Build the valid action space once.
+        # Valid actions: (0,0) no-op, or (positive flowrate, positive duration)
+        self.candidates = [
+            (fr, dur)
+            for fr in self.candidate_flowrates
+            for dur in self.candidate_durations
+            if (fr == 0.0 and dur == 0.0) or (fr > 0.0 and dur > 0.0)
+        ]
 
         self.dt = sim.get("dt_seconds", 60.0)
         self.ec_target = self.obj_cfg.ec_target
@@ -122,10 +136,17 @@ class OptimizationLabeler:
         flowrate: float,
         duration: float,
         params: TankDynamicsParams,
-    ) -> Tuple[Optional[np.ndarray], Optional[TankState]]:
-        ec_trace: List[float] = []
+    ) -> Tuple[Optional[list], Optional[TankState]]:
+        """Run H-step rollout. Returns (eco_trace, final_state).
+
+        eco_trace: list of per-step dicts with keys
+            ec, rho, health, damage, biomass, dose
+        """
+        eco_trace: list = []
         s = state
         periodic = self.rollout_mode == "periodic_repeat"
+        ic = self.obj_cfg.internal_capacity
+
         for k in range(self.horizon):
             if periodic:
                 can_dose = s.time_since_last_dose >= self.min_time_between_doses
@@ -134,6 +155,7 @@ class OptimizationLabeler:
             else:
                 fr = flowrate if k == 0 else 0.0
                 dur = duration if k == 0 else 0.0
+
             s = step_dynamics(s, fr, dur, self.dt, params)
             if not self._state_finite(s):
                 if self.debug_mode:
@@ -142,11 +164,30 @@ class OptimizationLabeler:
                         f"ec={s.ec} turbidity={s.turbidity} temp={s.water_temp}"
                     )
                 return None, None
-            ec_trace.append(s.ec)
-        trace = np.array(ec_trace, dtype=np.float64)
-        if not np.all(np.isfinite(trace)):
-            return None, None
-        return trace, s
+
+            B = max(s.algae_biomass, 1e-6)
+            rho = float(np.clip(s.internal_reserve / (B * ic), 0.0, 1.0))
+            dose = fr * dur / 60.0
+            
+            # Diagnostic mechanistic variables for sustainability penalties
+            thermal_resp = q10_metabolism_factor(s.water_temp, params)
+            maint_cost = params.maintenance_cost * s.algae_biomass * thermal_resp * (self.dt / 60.0)
+            osmotic_stress = (s.dissolved_nutrient_mass / params.osmotic_half_effect)**2
+
+            eco_trace.append({
+                "ec":      s.ec,
+                "rho":     rho,
+                "health":  s.health_index,
+                "damage":  s.damage_index,
+                "biomass": s.algae_biomass,
+                "dose":    dose,
+                "dissolved": s.dissolved_nutrient_mass,
+                "maint_cost": maint_cost,
+                "osmotic": osmotic_stress,
+                "detritus": s.dead_biomass_pool,
+            })
+
+        return eco_trace, s
 
     def score_action(
         self,
@@ -155,45 +196,42 @@ class OptimizationLabeler:
         duration: float,
         params: Optional[TankDynamicsParams] = None,
         return_breakdown: bool = False,
-    ) -> Tuple[float, Optional[CostBreakdown], Optional[np.ndarray]]:
+    ) -> Tuple[float, Optional[CostBreakdown], Optional[list]]:
         """
-        Evaluate one candidate. Returns (total_score, breakdown, ec_trace).
-
+        Evaluate one candidate. Returns (total_score, breakdown, eco_trace).
         Lower score is better.
         """
         params = params or self.base_params
 
-        if state.time_since_last_dose < self.min_time_between_doses and (
-            flowrate > 0 or duration > 0
-        ):
-            bd = CostBreakdown(total=1e6, safety=1e6)
-            return 1e6, bd if return_breakdown else None, None
+        # NOTE: time_since_last_dose constraint removed for labeling.
+        # During deployment, the environment enforces this constraint.
+        # During labeling, we need to evaluate candidate actions regardless
+        # of when the last dose occurred to learn optimal dosing decisions.
+        # if state.time_since_last_dose < self.min_time_between_doses and (
+        #     flowrate > 0 or duration > 0
+        # ):
+        #     bd = CostBreakdown(safety=1e6, total=1e6)
+        #     return 1e6, bd if return_breakdown else None, None
 
-        if (state.ec < self.ec_safe_min or state.ec > self.ec_safe_max) and (
-            flowrate == 0 and duration == 0
-        ):
-            bd = CostBreakdown(total=5e5, safety=5e5)
-            return 5e5, bd if return_breakdown else None, None
-
-        ec_trace, final_s = self._rollout(state, flowrate, duration, params)
-        if ec_trace is None or final_s is None:
+        eco_trace, final_s = self._rollout(state, flowrate, duration, params)
+        if eco_trace is None or final_s is None:
             if self.debug_mode:
                 print(
                     f"[ROLL_OUT_FAIL] flow={flowrate}, duration={duration}, "
                     f"ec_init={state.ec}, total_cost={_ROLLOUT_PENALTY}"
                 )
-            bd = CostBreakdown(total=_ROLLOUT_PENALTY, safety=_ROLLOUT_PENALTY)
+            bd = CostBreakdown(safety=_ROLLOUT_PENALTY, total=_ROLLOUT_PENALTY)
             return _ROLLOUT_PENALTY, bd if return_breakdown else None, None
 
         bd = evaluate_rollout(
-            ec_trace, final_s, state, flowrate, duration, self.obj_cfg
+            eco_trace, final_s, state, flowrate, duration, self.obj_cfg
         )
         total = bd.total
         if not np.isfinite(total):
             total = _ROLLOUT_PENALTY
             bd.total = total
         if return_breakdown:
-            return total, bd, ec_trace
+            return total, bd, eco_trace
         return total, None, None
 
     def label_action(
@@ -211,22 +249,21 @@ class OptimizationLabeler:
         candidate_results: List[dict] = []
         any_valid = False
 
-        for fr in self.candidate_flowrates:
-            for dur in self.candidate_durations:
-                if fr > self.flowrate_max or dur > self.duration_max:
-                    continue
-                sc, bd, trace = self.score_action(
-                    state, fr, dur, params, return_breakdown=True
-                )
-                if np.isfinite(sc) and sc < _ROLLOUT_PENALTY:
-                    any_valid = True
-                if bd is not None:
-                    candidate_results.append({
-                        "flowrate": fr,
-                        "duration": dur,
-                        "score": sc,
-                        "breakdown": bd.to_dict(),
-                    })
+        for fr, dur in self.candidates:
+            if fr > self.flowrate_max or dur > self.duration_max:
+                continue
+            sc, bd, trace = self.score_action(
+                state, fr, dur, params, return_breakdown=True
+            )
+            if np.isfinite(sc) and sc < _ROLLOUT_PENALTY:
+                any_valid = True
+            if bd is not None:
+                candidate_results.append({
+                    "flowrate": fr,
+                    "duration": dur,
+                    "score": sc,
+                    "breakdown": bd.to_dict(),
+                })
                 if sc < best_score:
                     best_score = sc
                     best_fr, best_dur = fr, dur
@@ -259,17 +296,31 @@ class OptimizationLabeler:
                 key=lambda c: c["flowrate"] * c["duration"],
                 default=None,
             )
+            # Summarise eco_trace for the best candidate
+            best_eco = None
+            if best_trace is not None:
+                best_eco = {
+                    "rho_mean":    float(np.mean([s["rho"]    for s in best_trace])),
+                    "health_mean": float(np.mean([s["health"] for s in best_trace])),
+                    "damage_mean": float(np.mean([s["damage"] for s in best_trace])),
+                    "biomass_end": float(best_trace[-1]["biomass"]) if best_trace else 0.0,
+                    "ec_end":      float(best_trace[-1]["ec"])      if best_trace else 0.0,
+                }
             self._diagnostic_samples.append({
-                "ec_initial": state.ec,
+                "ec_initial":     state.ec,
+                "rho_initial":    float(np.clip(
+                    state.internal_reserve / max(state.algae_biomass * self.obj_cfg.internal_capacity, 1e-6),
+                    0.0, 1.0)),
+                "health_initial": state.health_index,
                 "optimal": {
-                    "flowrate": best_fr,
-                    "duration": best_dur,
-                    "score": best_score,
+                    "flowrate":  best_fr,
+                    "duration":  best_dur,
+                    "score":     best_score,
                     "breakdown": best_bd.to_dict() if best_bd else {},
                 },
-                "ec_trace": best_trace.tolist() if best_trace is not None else [],
+                "eco_trace_summary": best_eco,
                 "conservative": conservative,
-                "aggressive": aggressive,
+                "aggressive":   aggressive,
                 "candidates_top5": sorted(candidate_results, key=lambda c: c["score"])[:5],
             })
 

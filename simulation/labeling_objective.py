@@ -1,22 +1,25 @@
 """
-Modular multi-objective cost for precision-regulation label generation (Option B).
+Ecosystem Regulation cost function for optimization-based label generation.
 
-J_total =
-  λ_tracking  * J_tracking   (time-weighted setpoint error)
-+ λ_recovery  * J_recovery   (band entry / persistence)
-+ λ_stability * J_stability  (late-horizon variance, not transients)
-+ λ_oscillation * J_oscillation (ringing / chatter)
-+ λ_overshoot * J_overshoot  (nonlinear mild vs severe)
-+ λ_cost * J_nutrient
-+ λ_smoothness * J_action
+Replaces EC setpoint-tracking objective with biological health preservation:
+
+J_total = λ_h  × J_health          (ecosystem viability — irreversibility guard)
+        + λ_d  × J_damage           (rate of harm + accumulated harm)
+        + λ_r  × J_reserve          (starvation prevention + reserve stability)
+        + λ_br × J_biomass_rate     (bloom prevention — upward growth trend only)
+        + λ_n  × J_nutrient         (dosing efficiency — pure cost, no reserve coupling)
+        + λ_a  × J_action           (control smoothness)
+        +        V(s_T)             (terminal sustainability cost)
 
 Lower total is better.
+
+EC is no longer an objective variable. It is retained as a secondary diagnostic.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -24,16 +27,6 @@ from simulation.dynamics import TankDynamicsParams, TankState
 
 _INVALID_COST = 1e6
 _INVALID_TOTAL = 1e9
-
-
-def _safe_corr(x: np.ndarray, y: np.ndarray) -> float:
-    """Lag-1 style correlation with flat-sequence guard."""
-    if len(x) < 2 or len(y) < 2:
-        return 0.0
-    if np.std(x) < 1e-8 or np.std(y) < 1e-8:
-        return 0.0
-    corr = float(np.corrcoef(x, y)[0, 1])
-    return float(np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0))
 
 
 def _ensure_finite(value: float, name: str, debug: bool = False) -> float:
@@ -44,115 +37,159 @@ def _ensure_finite(value: float, name: str, debug: bool = False) -> float:
     return _INVALID_COST
 
 
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
 @dataclass
 class LabelingObjectiveConfig:
-    """Weights and thresholds loaded from YAML `labeling` section."""
+    """Weights and thresholds for the ecosystem regulation objective."""
 
+    # Biological thresholds
+    health_floor: float = 0.70          # health below this → elevated mortality
+    reserve_floor: float = 0.20         # starvation boundary (~100 steps reserve)
+    b_ref: float = 120.0                # normalizer for biomass rate cost
+    b_bloom_threshold: float = 300.0    # terminal cost bloom threshold
+    rho_setpoint: float = 0.50          # reference operating point (Droop half-quota)
+    internal_capacity: float = 0.5      # mirrors dynamics param
+
+    # Cost term weights (λ) - Hierarchical sustainability penalties
+    health: float = 1.5
+    damage: float = 1.0
+    reserve: float = 1.2
+    biomass_rate: float = 0.6         # Medium penalty: acceleration/velocity
+    biomass_envelope: float = 0.3     # Weak penalty: safe operating zone
+    maintenance: float = 2.0          # Strong penalty: root cause of detritus
+    detritus: float = 1.0             # Future dissolved penalty
+    dissolved_inventory: float = 1.0  # Sustained tank loading
+    dissolved_accumulation: float = 3.0 # Very strong penalty: tank poisoning
+    osmotic: float = 5.0              # Dominant penalty: uptake shutdown
+    nutrient_cost: float = 0.25
+    action_smoothness: float = 0.15
+    
+    # Mechanistic Parameters from Dynamics
+    maintenance_rate: float = 0.0005
+    osmotic_safe_threshold: float = 0.2
+
+    # Sub-term weights
+    reserve_oscillation_weight: float = 0.5   # var(rho) inside J_reserve
+    damage_rate_weight: float = 2.0           # Δdamage vs accumulated damage
+    nutrient_quadratic_weight: float = 0.5    # (avg_dose)^2 in J_nutrient
+
+    # Rollout fractions
+    tail_fraction: float = 0.35        # tail window for late-horizon metrics
+
+    # Misc
+    horizon: int = 200
+    debug_mode: bool = False
+
+    # Legacy fields retained for backward compatibility (not used in cost)
     ec_target: float = 1.2
     ec_safe_min: float = 0.4
     ec_safe_max: float = 2.5
-    ec_healthy_min: float = 0.75
-    horizon: int = 60
-    target_band_pct: float = 0.05
-    time_weight_alpha: float = 2.0
-    steady_state_tail_fraction: float = 0.35
-
-    # λ weights
-    tracking: float = 1.4
-    recovery: float = 1.0
-    steady_state: float = 0.8
-    stability: float = 0.25
-    oscillation: float = 0.6
-    overshoot: float = 0.5
-    nutrient_cost: float = 0.2
-    action_smoothness: float = 0.15
-    action_rate: float = 0.1
-
-    transient_aggression_tolerance: float = 1.5
-    under_target_cost_relief: float = 0.65
-
-    mild_threshold_offset: float = 0.15
-    critical_threshold: float = 1.7
-    mild_overshoot_weight: float = 0.35
-    severe_overshoot_weight: float = 4.0
-
-    collapse_penalty: float = 8.0
-    unsafe_terminal_penalty: float = 12.0
-    disable_collapse_penalty: bool = False
-    debug_mode: bool = False
 
     @classmethod
-    def from_yaml(cls, labeling: Dict[str, Any], sim: Dict[str, Any], dyn: Dict[str, Any]) -> "LabelingObjectiveConfig":
+    def from_yaml(
+        cls,
+        labeling: Dict[str, Any],
+        sim: Dict[str, Any],
+        dyn: Dict[str, Any],
+        eco: Optional[Dict[str, Any]] = None,
+    ) -> "LabelingObjectiveConfig":
+        eco = eco or {}
         w = labeling.get("weights", {})
-        legacy = labeling.get("legacy_weights", labeling.get("weights_legacy", {}))
-        os_cfg = labeling.get("overshoot", {})
-        act = labeling.get("action_regularization", {})
 
-        def _w(new_key: str, legacy_key: str, default: float) -> float:
-            if new_key in w:
-                return float(w[new_key])
-            if legacy_key in legacy:
-                return float(legacy[legacy_key])
+        def _f(key: str, default: float, *dicts) -> float:
+            for d in dicts:
+                if key in d:
+                    return float(d[key])
             return default
 
         return cls(
-            ec_target=sim.get("ec_target", 1.2),
-            ec_safe_min=sim.get("ec_safe_min", 0.4),
-            ec_safe_max=sim.get("ec_safe_max", 2.5),
-            ec_healthy_min=dyn.get("ec_healthy_min", 0.75),
-            horizon=labeling.get("horizon_steps", 60),
-            target_band_pct=labeling.get("target_band_pct", 0.05),
-            time_weight_alpha=labeling.get("time_weight_alpha", 2.0),
-            steady_state_tail_fraction=labeling.get("steady_state_tail_fraction", 0.35),
-            tracking=_w("tracking", "ec_error", 1.4),
-            recovery=float(w.get("recovery", labeling.get("recovery_weight", 1.0))),
-            steady_state=float(w.get("steady_state", labeling.get("steady_state_weight", 0.8))),
-            stability=_w("stability", "instability", 0.25),
-            oscillation=float(w.get("oscillation", labeling.get("oscillation_weight", 0.6))),
-            overshoot=_w("overshoot", "overshoot", 0.5),
-            nutrient_cost=_w("nutrient_cost", "nutrient_cost", 0.2),
-            action_smoothness=float(act.get("smoothness_weight", w.get("action_smoothness", 0.15))),
-            action_rate=float(act.get("rate_change_weight", w.get("action_rate", 0.1))),
-            transient_aggression_tolerance=labeling.get("transient_aggression_tolerance", 1.5),
-            under_target_cost_relief=labeling.get("under_target_cost_relief", 0.65),
-            mild_threshold_offset=os_cfg.get("mild_threshold_offset", 0.15),
-            critical_threshold=os_cfg.get("critical_threshold", 1.7),
-            mild_overshoot_weight=os_cfg.get("mild_weight", 0.35),
-            severe_overshoot_weight=os_cfg.get("severe_weight", 4.0),
-            collapse_penalty=labeling.get("collapse_penalty", 8.0),
-            unsafe_terminal_penalty=labeling.get("unsafe_terminal_penalty", 12.0),
-            disable_collapse_penalty=bool(labeling.get("disable_collapse_penalty", False)),
+            # Thresholds (ecosystem_control > labeling > defaults)
+            health_floor=_f("health_floor", 0.70, eco, labeling),
+            reserve_floor=_f("reserve_floor", 0.20, eco, labeling),
+            b_ref=_f("b_ref", 120.0, eco, labeling),
+            b_bloom_threshold=_f("b_bloom_threshold", 300.0, eco, labeling),
+            rho_setpoint=_f("rho_setpoint", 0.50, eco, labeling),
+            internal_capacity=_f("internal_capacity", 0.5, eco, dyn),
+            # Weights
+            health=float(w.get("health", 1.5)),
+            damage=float(w.get("damage", 1.0)),
+            reserve=float(w.get("reserve", 1.2)),
+            biomass_rate=float(w.get("biomass_rate", 0.6)),
+            biomass_envelope=float(w.get("biomass_envelope", 0.3)),
+            maintenance=float(w.get("maintenance", 2.0)),
+            detritus=float(w.get("detritus", 1.0)),
+            dissolved_inventory=float(w.get("dissolved_inventory", 1.0)),
+            dissolved_accumulation=float(w.get("dissolved_accumulation", 3.0)),
+            osmotic=float(w.get("osmotic", 5.0)),
+            nutrient_cost=float(w.get("nutrient_cost", 0.25)),
+            action_smoothness=float(w.get("action_smoothness", 0.15)),
+            
+            # Mechanistic Parameters
+            maintenance_rate=float(dyn.get("maintenance_cost", 0.0005)),
+            osmotic_safe_threshold=float(dyn.get("osmotic_safe_threshold", 0.2)),
+            # Sub-term weights
+            reserve_oscillation_weight=float(labeling.get("reserve_oscillation_weight", 0.5)),
+            damage_rate_weight=float(labeling.get("damage_rate_weight", 2.0)),
+            nutrient_quadratic_weight=float(labeling.get("nutrient_quadratic_weight", 0.5)),
+            # Rollout
+            tail_fraction=float(labeling.get("tail_fraction", 0.35)),
+            horizon=int(labeling.get("horizon_steps", 200)),
             debug_mode=bool(labeling.get("debug_mode", False)),
+            # Legacy
+            ec_target=float(sim.get("ec_target", 1.2)),
+            ec_safe_min=float(sim.get("ec_safe_min", 0.4)),
+            ec_safe_max=float(sim.get("ec_safe_max", 2.5)),
         )
 
 
+# ---------------------------------------------------------------------------
+# Cost breakdown dataclass
+# ---------------------------------------------------------------------------
+
 @dataclass
 class CostBreakdown:
-    """Per-candidate objective terms (unweighted)."""
+    """Per-candidate ecosystem cost terms (unweighted raw values)."""
 
-    tracking: float = 0.0
-    steady_state: float = 0.0
-    recovery: float = 0.0
-    stability: float = 0.0
-    oscillation: float = 0.0
-    overshoot: float = 0.0
-    nutrient: float = 0.0
-    action: float = 0.0
-    safety: float = 0.0
+    health: float = 0.0         # J_health
+    damage: float = 0.0         # J_damage
+    reserve: float = 0.0        # J_reserve
+    biomass_rate: float = 0.0   # J_biomass_rate (velocity/acceleration)
+    biomass_envelope: float = 0.0 # J_biomass_envelope
+    maintenance: float = 0.0    # J_maintenance
+    detritus: float = 0.0       # J_detritus
+    dissolved_inventory: float = 0.0 # J_dissolved_inventory
+    dissolved_accumulation: float = 0.0 # J_dissolved_accumulation
+    osmotic: float = 0.0        # J_osmotic
+    nutrient: float = 0.0       # J_nutrient
+    action: float = 0.0         # J_action
+    terminal: float = 0.0       # V(s_T)
+    safety: float = 0.0         # hard infeasibility penalties
     total: float = 0.0
-    time_to_band: float = 0.0
-    in_band_at_end: bool = False
+
+    # Diagnostic fields (not in cost)
+    reserve_mean: float = 0.0
+    health_mean: float = 0.0
+    damage_mean: float = 0.0
+    biomass_mean: float = 0.0
 
     def weighted_total(self, cfg: LabelingObjectiveConfig) -> float:
         return (
-            cfg.tracking * self.tracking
-            + cfg.steady_state * self.steady_state
-            + cfg.recovery * self.recovery
-            + cfg.stability * self.stability
-            + cfg.oscillation * self.oscillation
-            + cfg.overshoot * self.overshoot
+            cfg.health         * self.health
+            + cfg.damage       * self.damage
+            + cfg.reserve      * self.reserve
+            + cfg.biomass_rate * self.biomass_rate
+            + cfg.biomass_envelope * self.biomass_envelope
+            + cfg.maintenance  * self.maintenance
+            + cfg.detritus     * self.detritus
+            + cfg.dissolved_inventory * self.dissolved_inventory
+            + cfg.dissolved_accumulation * self.dissolved_accumulation
+            + cfg.osmotic      * self.osmotic
             + cfg.nutrient_cost * self.nutrient
             + cfg.action_smoothness * self.action
+            + self.terminal
             + self.safety
         )
 
@@ -160,184 +197,291 @@ class CostBreakdown:
         return asdict(self)
 
 
-def _time_weights(horizon: int, alpha: float) -> np.ndarray:
-    """w_t = 1 + alpha * (t/H)^2 — late errors weighted more heavily."""
-    if horizon <= 1:
-        return np.ones(1)
-    t = np.arange(horizon, dtype=np.float64)
-    return 1.0 + alpha * (t / max(horizon - 1, 1)) ** 2
+# ---------------------------------------------------------------------------
+# Rollout state trace helpers
+# ---------------------------------------------------------------------------
+
+def compute_rho(state: TankState, internal_capacity: float) -> float:
+    """Reserve ratio: clipped to [0, 1]."""
+    B = max(state.algae_biomass, 1e-6)
+    return float(np.clip(state.internal_reserve / (B * internal_capacity), 0.0, 1.0))
 
 
-def _tracking_cost(ec_trace: np.ndarray, cfg: LabelingObjectiveConfig) -> tuple[float, float]:
-    """Time-weighted MAE + tail steady-state emphasis."""
-    w = _time_weights(len(ec_trace), cfg.time_weight_alpha)
-    errors = np.abs(ec_trace - cfg.ec_target)
-    j_track = float(np.mean(w * errors))
+# ---------------------------------------------------------------------------
+# Cost functions
+# ---------------------------------------------------------------------------
 
-    tail_n = max(3, int(len(ec_trace) * cfg.steady_state_tail_fraction))
-    tail_err = float(np.mean(errors[-tail_n:]))
-    j_ss = tail_err * (1.0 + cfg.time_weight_alpha * 0.5)
-    return j_track, j_ss
-
-
-def _recovery_cost(ec_trace: np.ndarray, cfg: LabelingObjectiveConfig) -> tuple[float, float, bool]:
+def _health_cost(health_trace: np.ndarray, final_health: float, cfg: LabelingObjectiveConfig) -> float:
     """
-    Penalize slow band entry and failure to remain in band.
+    J_health = mean_t[ max(0, H_floor - H(t)) ] + 3.0 * terminal deficit.
 
-    Returns (J_recovery, normalized_time_to_band, in_band_at_end).
+    Leverages the health_index which already integrates damage hysteresis,
+    repair kinetics, and starvation effects from the biology layer.
+    Terminal multiplier (×3) encodes irreversibility of collapse.
     """
-    band = cfg.target_band_pct * cfg.ec_target
-    h = len(ec_trace)
-    time_to_band = float(h)
-    in_band = np.abs(ec_trace - cfg.ec_target) <= band
-    for i, ok in enumerate(in_band):
-        if ok:
-            time_to_band = float(i)
-            break
-
-    norm_ttb = time_to_band / max(h, 1)
-    persistence_fail = 0.0 if in_band[-1] else 1.0
-    # Under-target bias at end — precision regulation should not settle low
-    under_target_end = max(0.0, cfg.ec_target - ec_trace[-1]) / cfg.ec_target
-
-    j_recovery = norm_ttb + 1.2 * persistence_fail + 0.8 * under_target_end
-    return j_recovery, norm_ttb, bool(in_band[-1])
+    H_floor = cfg.health_floor
+    deficit = np.maximum(0.0, H_floor - health_trace)
+    running = float(np.mean(deficit))
+    terminal = 3.0 * max(0.0, H_floor - final_health)
+    return running + terminal
 
 
-def _stability_cost(ec_trace: np.ndarray) -> float:
-    """Late-horizon variance only — ignores early corrective transients."""
-    h = len(ec_trace)
-    start = h // 2
-    tail = ec_trace[start:]
-    if len(tail) < 3:
+def _damage_cost(damage_trace: np.ndarray, cfg: LabelingObjectiveConfig) -> float:
+    """
+    J_damage = mean(D) + λ_drate × mean(max(0, ΔD))
+
+    Running cost (accumulated harm) + rate cost (active deterioration).
+    Rate term fires only when damage is actively worsening, not when stable.
+    Asymmetric: stable damage incurs no additional rate penalty.
+    """
+    accumulated = float(np.mean(damage_trace))
+    delta_d = np.diff(damage_trace, prepend=damage_trace[0])
+    rate = float(np.mean(np.maximum(0.0, delta_d)))
+    return accumulated + cfg.damage_rate_weight * rate
+
+
+def _reserve_cost(rho_trace: np.ndarray, cfg: LabelingObjectiveConfig) -> float:
+    """
+    J_reserve = mean[ max(0, rho_floor - rho)^2 ] + λ_osc × var(rho)
+
+    Quadratic floor: smooth gradient away from starvation boundary.
+    Normalized by reserve_floor so that hitting 0 rho gives a cost of 1.0.
+    """
+    floor_deficit = np.maximum(0.0, cfg.reserve_floor - rho_trace)
+    norm_deficit = floor_deficit / max(cfg.reserve_floor, 1e-6)
+    starvation_cost = float(np.mean(norm_deficit ** 2))
+    oscillation_cost = float(np.var(rho_trace))
+    return starvation_cost + cfg.reserve_oscillation_weight * oscillation_cost
+
+
+def _biomass_envelope_cost(biomass_trace: np.ndarray, cfg: LabelingObjectiveConfig) -> float:
+    """
+    J_biomass_envelope: Weak penalty for operating in high-density regions.
+    Provides a soft operating envelope without a hard cliff.
+    """
+    safe_threshold = cfg.b_bloom_threshold * 0.55
+    overage = np.maximum(0.0, biomass_trace - safe_threshold)
+    return float(np.mean((overage / 40.0) ** 2))
+
+
+def _biomass_rate_cost(biomass_trace: np.ndarray, cfg: LabelingObjectiveConfig) -> float:
+    """
+    J_biomass_rate: Medium penalty for accelerating growth.
+    Penalizes positive velocity and positive acceleration indicating impending bloom.
+    Normalized by the biological maximum growth rate.
+    """
+    if len(biomass_trace) < 3:
         return 0.0
-    return float(np.var(tail))
+    vel = np.diff(biomass_trace, prepend=biomass_trace[0])
+    accel = np.diff(vel, prepend=vel[0])
+    
+    # Max theoretical velocity is approx b_ref * 0.012 (max_growth_rate)
+    max_vel = max(cfg.b_ref * 0.012, 1e-6)
+    norm_vel = np.maximum(0.0, vel) / max_vel
+    
+    # Max acceleration is a fraction of max velocity
+    norm_accel = np.maximum(0.0, accel) / (max_vel * 0.1)
+    
+    return float(np.mean(norm_vel**2 + norm_accel**2))
 
 
-def _oscillation_cost(ec_trace: np.ndarray) -> float:
+def _maintenance_cost(maint_trace: np.ndarray, cfg: LabelingObjectiveConfig) -> float:
     """
-    Ringing / chatter: sign-change rate, rolling variance, lag-1 autocorrelation.
+    J_maintenance: Strong penalty for high maintenance burden (precursor to detritus).
+    Normalized by the approximate maintenance cost of a healthy B_ref.
+    Nonlinear to severely penalize extremely high maintenance levels.
     """
-    if len(ec_trace) < 4:
+    baseline_maint = cfg.b_ref * cfg.maintenance_rate
+    if baseline_maint < 1e-6:
         return 0.0
-    d = np.diff(ec_trace)
-    signs = np.sign(d)
-    sign_changes = float(np.sum(np.abs(np.diff(signs)) > 0)) / max(len(d) - 1, 1)
-
-    win = min(8, len(ec_trace) // 2)
-    rolling_var = 0.0
-    if win >= 3:
-        vars = [np.var(ec_trace[i : i + win]) for i in range(len(ec_trace) - win)]
-        rolling_var = float(np.mean(vars))
-
-    centered = ec_trace - np.mean(ec_trace)
-    ac1 = _safe_corr(centered[:-1], centered[1:])
-    ringing = max(0.0, ac1)
-
-    cost = sign_changes + 0.5 * rolling_var + 0.8 * ringing
-    return float(np.nan_to_num(cost, nan=0.0, posinf=_INVALID_COST, neginf=_INVALID_COST))
+    norm_maint = np.maximum(0.0, maint_trace) / baseline_maint
+    return float(np.mean(norm_maint ** 1.5))
 
 
-def _overshoot_cost(ec_trace: np.ndarray, cfg: LabelingObjectiveConfig) -> float:
+def _detritus_cost(detritus_trace: np.ndarray) -> float:
     """
-    Nonlinear: mild quadratic below critical; exponential above critical threshold.
+    J_detritus: Penalty for future dissolved nutrients currently in the dead pool.
+    Penalizes both inventory and accumulation of detritus.
+    Normalized so a 10g dead pool or 0.05g/min growth yields 1.0 cost.
     """
-    target = cfg.ec_target
-    mild_line = target + cfg.mild_threshold_offset
-    critical = cfg.critical_threshold
-    excess = np.maximum(0.0, ec_trace - target)
+    if len(detritus_trace) < 2:
+        return 0.0
+    mean_val = float(np.mean(detritus_trace))
+    delta = np.diff(detritus_trace, prepend=detritus_trace[0])
+    slope_val = float(np.mean(np.maximum(0.0, delta)))
+    
+    norm_mean = mean_val / 10.0
+    norm_slope = slope_val / 0.05
+    return norm_mean + norm_slope
 
-    mild_mask = (ec_trace > mild_line) & (ec_trace <= critical)
-    severe_mask = ec_trace > critical
 
-    j_mild = float(np.mean(excess[mild_mask] ** 2)) if np.any(mild_mask) else 0.0
-    if np.any(severe_mask):
-        sev_excess = np.clip(ec_trace[severe_mask] - critical, 0.0, 10.0)
-        j_severe = float(np.mean(np.exp(sev_excess) - 1.0))
+def _dissolved_inventory_cost(dissolved_trace: np.ndarray) -> float:
+    """
+    J_dissolved_inventory: Sustained tank loading penalty.
+    Normalized against osmotic_half_effect (5.0).
+    """
+    return float(np.mean(dissolved_trace)) / 5.0
+
+
+def _dissolved_accumulation_cost(dissolved_trace: np.ndarray) -> float:
+    """
+    J_dissolved_accumulation: Very strong penalty for dissolved nutrient accumulation.
+    Normalized against max physical entry rate (approx 0.1g/min).
+    """
+    if len(dissolved_trace) < 2:
+        return 0.0
+    delta = np.diff(dissolved_trace, prepend=dissolved_trace[0])
+    return float(np.mean(np.maximum(0.0, delta))) / 0.10
+
+
+def _osmotic_cost(osmotic_trace: np.ndarray, cfg: LabelingObjectiveConfig) -> float:
+    """
+    J_osmotic: Dominant penalty for direct osmotic stress (causes immediate uptake shutdown).
+    """
+    return float(np.mean(np.maximum(0.0, osmotic_trace - cfg.osmotic_safe_threshold) ** 2))
+
+
+def _nutrient_cost(
+    dose_trace: np.ndarray,
+    cfg: LabelingObjectiveConfig,
+) -> float:
+    """
+    J_nutrient = mean(dose) + λ_quad × (mean_dose)^2
+
+    Pure dosing cost — decoupled from reserve state.
+    J_reserve separately determines when dosing is worthwhile.
+    Quadratic term super-linearly penalizes sustained high-rate dosing.
+    """
+    mean_dose = float(np.mean(dose_trace))
+    linear = mean_dose
+    quadratic = cfg.nutrient_quadratic_weight * (mean_dose ** 2)
+    return linear + quadratic
+
+
+def _action_cost(flowrate: float, duration: float, state: TankState) -> float:
+    """
+    J_action = (Δflowrate_norm)^2 + (Δduration_norm)^2
+
+    Rate-of-change penalty for actuator wear and control chattering.
+    Normalized to [0, 1] range to avoid overshadowing biological costs.
+    """
+    d_fr = abs(flowrate - state.prev_flowrate) / 5.0    # max flowrate
+    d_dur = abs(duration - state.prev_duration) / 30.0  # max duration
+    spike = max(0.0, flowrate * duration / 60.0 - 1.5) ** 2 * 0.1
+    return d_fr ** 2 + d_dur ** 2 + spike
+
+
+def _terminal_sustainability_cost(
+    final_s: TankState,
+    rho_trace: np.ndarray,
+    health_trace: np.ndarray,
+    biomass_trace: np.ndarray,
+    dissolved_trace: np.ndarray,
+    maint_trace: np.ndarray,
+    osmotic_trace: np.ndarray,
+    cfg: LabelingObjectiveConfig,
+) -> float:
+    """
+    V(s_T) — extrapolates impending collapse at horizon end using terminal slopes.
+    """
+    rho_T = compute_rho(final_s, cfg.internal_capacity)
+    
+    # Calculate trends over the last 10% of the trace
+    tail_n = max(2, int(len(rho_trace) * 0.1))
+    
+    if len(rho_trace) >= tail_n:
+        rho_slope = float(rho_trace[-1] - rho_trace[-tail_n])
+        biomass_slope = float(biomass_trace[-1] - biomass_trace[-tail_n])
+        dissolved_slope = float(dissolved_trace[-1] - dissolved_trace[-tail_n])
+        maint_tail = np.mean(maint_trace[-tail_n:])
     else:
-        j_severe = 0.0
+        rho_slope = biomass_slope = dissolved_slope = 0.0
+        maint_tail = maint_trace[-1] if len(maint_trace) > 0 else 0.0
 
-    cost = cfg.mild_overshoot_weight * j_mild + cfg.severe_overshoot_weight * j_severe
-    return float(np.nan_to_num(cost, nan=0.0, posinf=_INVALID_COST, neginf=_INVALID_COST))
+    # Base state risks
+    norm_deficit = max(0.0, cfg.reserve_floor - rho_T) / max(cfg.reserve_floor, 1e-6)
+    starvation_risk = norm_deficit ** 2 * 5.0  # Terminal starvation is very risky
+    
+    # Trajectory slopes indicating impending collapse
+    decline_risk = 2.0 * max(0.0, -rho_slope)
+    bloom_momentum = 5.0 * max(0.0, biomass_slope / max(cfg.b_ref, 1.0))
+    dissolved_momentum = 5.0 * max(0.0, dissolved_slope)
+    
+    # Terminal mechanistic triggers
+    maint_risk = (maint_tail / max(cfg.b_ref * cfg.maintenance_rate, 1e-6)) * 2.0
+    
+    osmotic_T = osmotic_trace[-1] if len(osmotic_trace) > 0 else 0.0
+    osmotic_risk = max(0.0, osmotic_T - cfg.osmotic_safe_threshold) ** 2 * 5.0
 
-
-def _action_cost(
-    flowrate: float,
-    duration: float,
-    state: TankState,
-    cfg: LabelingObjectiveConfig,
-    ec_trace: np.ndarray,
-) -> float:
-    """
-    Nutrient use + smoothness / rate limits.
-
-    Under-target tracking error reduces effective nutrient penalty (allows corrective aggression).
-    """
-    dose = flowrate * duration / 60.0
-    tracking_gap = max(0.0, cfg.ec_target - state.ec) / cfg.ec_target
-    relief = 1.0 - cfg.under_target_cost_relief * min(1.0, tracking_gap)
-    relief = max(0.35, relief)
-
-    j_nutrient = dose * relief
-
-    d_fr = abs(flowrate - state.prev_flowrate)
-    d_dur = abs(duration - state.prev_duration)
-    j_rate = 0.02 * d_fr + 0.002 * d_dur
-
-    spike = max(0.0, dose - 3.0) ** 2 * 0.05
-    tolerance = cfg.transient_aggression_tolerance
-    if tracking_gap > 0.1:
-        spike *= 1.0 / (1.0 + tolerance * tracking_gap)
-
-    j_smooth = j_rate + spike
-    return j_nutrient, j_smooth
+    return starvation_risk + decline_risk + bloom_momentum + dissolved_momentum + maint_risk + osmotic_risk
 
 
-def _safety_penalties(
-    ec_trace: np.ndarray,
-    final_state: TankState,
-    cfg: LabelingObjectiveConfig,
-    flowrate: float,
-    duration: float,
-) -> float:
-    pen = 0.0
-    if final_state.ec > cfg.ec_safe_max or final_state.ec < cfg.ec_safe_min:
-        pen += cfg.unsafe_terminal_penalty
-    if not cfg.disable_collapse_penalty and final_state.ec < cfg.ec_healthy_min:
-        pen += cfg.collapse_penalty * (cfg.ec_healthy_min - final_state.ec)
-    if np.any(ec_trace > cfg.critical_threshold + 0.2):
-        pen += 2.0
-    return pen
+def _hard_safety(final_s: TankState) -> float:
+    """Hard penalty for degenerate terminal states (near-zero biomass or NaN)."""
+    if final_s.algae_biomass < 1.0:
+        return 50.0   # complete biomass collapse
+    if final_s.health_index < 0.05:
+        return 30.0   # near-certain irreversible death
+    return 0.0
 
+
+# ---------------------------------------------------------------------------
+# Main rollout evaluator
+# ---------------------------------------------------------------------------
 
 def evaluate_rollout(
-    ec_trace: np.ndarray,
+    eco_trace: List[Dict[str, float]],
     final_state: TankState,
     initial_state: TankState,
     flowrate: float,
     duration: float,
     cfg: LabelingObjectiveConfig,
 ) -> CostBreakdown:
-    """Compute full cost breakdown for one candidate action rollout."""
+    """
+    Compute full ecosystem cost breakdown for one candidate action rollout.
+
+    eco_trace: list of per-step dicts with keys:
+        ec, rho, health, damage, biomass, dose
+    """
     dbg = cfg.debug_mode
-    j_track, j_ss = _tracking_cost(ec_trace, cfg)
-    j_rec, ttb, in_band = _recovery_cost(ec_trace, cfg)
-    j_stab = _stability_cost(ec_trace)
-    j_osc = _oscillation_cost(ec_trace)
-    j_over = _overshoot_cost(ec_trace, cfg)
-    j_nut, j_act = _action_cost(flowrate, duration, initial_state, cfg, ec_trace)
-    j_safe = _safety_penalties(ec_trace, final_state, cfg, flowrate, duration)
+    H = len(eco_trace)
+
+    if H == 0:
+        bd = CostBreakdown(safety=_INVALID_COST, total=_INVALID_TOTAL)
+        return bd
+
+    health_arr  = np.array([s["health"]  for s in eco_trace], dtype=np.float64)
+    damage_arr  = np.array([s["damage"]  for s in eco_trace], dtype=np.float64)
+    rho_arr     = np.array([s["rho"]     for s in eco_trace], dtype=np.float64)
+    biomass_arr = np.array([s["biomass"] for s in eco_trace], dtype=np.float64)
+    dose_arr    = np.array([s["dose"]    for s in eco_trace], dtype=np.float64)
+    diss_arr    = np.array([s["dissolved"] for s in eco_trace], dtype=np.float64)
+    maint_arr   = np.array([s["maint_cost"] for s in eco_trace], dtype=np.float64)
+    osmotic_arr = np.array([s["osmotic"] for s in eco_trace], dtype=np.float64)
+    detritus_arr = np.array([s.get("detritus", 0.0) for s in eco_trace], dtype=np.float64)
+
+    j_health  = _health_cost(health_arr, float(final_state.health_index), cfg)
+    j_damage  = _damage_cost(damage_arr, cfg)
+    j_reserve = _reserve_cost(rho_arr, cfg)
+    j_biomass = _biomass_rate_cost(biomass_arr, cfg)
+    j_env     = _biomass_envelope_cost(biomass_arr, cfg)
+    j_maint   = _maintenance_cost(maint_arr, cfg)
+    j_det     = _detritus_cost(detritus_arr)
+    j_diss_inv = _dissolved_inventory_cost(diss_arr)
+    j_diss_acc = _dissolved_accumulation_cost(diss_arr)
+    j_osmotic = _osmotic_cost(osmotic_arr, cfg)
+    j_nutrient = _nutrient_cost(dose_arr, cfg)
+    j_action   = _action_cost(flowrate, duration, initial_state)
+    j_terminal = _terminal_sustainability_cost(final_state, rho_arr, health_arr, biomass_arr, diss_arr, maint_arr, osmotic_arr, cfg)
+    j_safety   = _hard_safety(final_state)
 
     terms = {
-        "tracking": j_track,
-        "steady_state": j_ss,
-        "recovery": j_rec,
-        "stability": j_stab,
-        "oscillation": j_osc,
-        "overshoot": j_over,
-        "nutrient": j_nut,
-        "action": j_act,
-        "safety": j_safe,
+        "health": j_health, "damage": j_damage, "reserve": j_reserve,
+        "biomass_rate": j_biomass, "biomass_envelope": j_env,
+        "maintenance": j_maint, "detritus": j_det,
+        "dissolved_inventory": j_diss_inv, "dissolved_accumulation": j_diss_acc,
+        "osmotic": j_osmotic, "nutrient": j_nutrient, "action": j_action,
+        "terminal": j_terminal, "safety": j_safety,
     }
     for name, val in terms.items():
         terms[name] = _ensure_finite(val, name, debug=dbg)
@@ -349,17 +493,25 @@ def evaluate_rollout(
         )
 
     bd = CostBreakdown(
-        tracking=terms["tracking"],
-        steady_state=terms["steady_state"],
-        recovery=terms["recovery"],
-        stability=terms["stability"],
-        oscillation=terms["oscillation"],
-        overshoot=terms["overshoot"],
+        health=terms["health"],
+        damage=terms["damage"],
+        reserve=terms["reserve"],
+        biomass_rate=terms["biomass_rate"],
+        biomass_envelope=terms["biomass_envelope"],
+        maintenance=terms["maintenance"],
+        detritus=terms["detritus"],
+        dissolved_inventory=terms["dissolved_inventory"],
+        dissolved_accumulation=terms["dissolved_accumulation"],
+        osmotic=terms["osmotic"],
         nutrient=terms["nutrient"],
         action=terms["action"],
+        terminal=terms["terminal"],
         safety=terms["safety"],
-        time_to_band=ttb,
-        in_band_at_end=in_band,
+        # Diagnostics
+        reserve_mean=float(np.mean(rho_arr)),
+        health_mean=float(np.mean(health_arr)),
+        damage_mean=float(np.mean(damage_arr)),
+        biomass_mean=float(np.mean(biomass_arr)),
     )
     bd.total = bd.weighted_total(cfg)
     if not np.isfinite(bd.total):

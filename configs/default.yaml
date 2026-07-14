@@ -1,4 +1,4 @@
-# Algae nutrient dosing control — default experiment configuration (dynamics v3)
+# Algae nutrient dosing control — default experiment configuration (ecosystem regulation v4)
 
 seed: 42
 experiment_name: algae_dosing_policy_v3
@@ -41,7 +41,7 @@ dynamics:
   algae_sensor_tau: 0.045
   immediate_absorption_fraction: 0.28
   delay_kernel: [0.15, 0.25, 0.30, 0.20, 0.10]
-  max_queue_release_rate: 0.048
+  max_queue_release_rate: 0.55   # raised from 0.048 — must cover peak kernel slot at max dose (0.54 mass/step)
   release_damping: 0.85
   background_dilution_rate: 0.002
   maximum_uptake_rate: 0.018
@@ -57,6 +57,7 @@ dynamics:
   damage_rate: 0.0001
   repair_rate: 0.01
   osmotic_half_effect: 5.0
+  osmotic_safe_threshold: 0.2
   basal_repair_rate: 0.0003
   light_attenuation_half_mass: 250.0
   temp_ref: 25.0
@@ -91,42 +92,51 @@ disturbances:
   turbidity_sediment_magnitude: 18.0
   correlated_noise_rho: 0.85
 
+# ---------------------------------------------------------------------------
+# Ecosystem control shared parameters (used by PID, labeler, and tuner)
+# ---------------------------------------------------------------------------
+ecosystem_control:
+  rho_setpoint: 0.30        # reserve ratio reference operating point (Droop half-quota)
+  internal_capacity: 0.5    # mirrors dynamics.internal_capacity — used for rho computation
+  health_floor: 0.70        # health below this drives elevated mortality cost
+  reserve_floor: 0.20       # starvation boundary; buffer ~100 steps before maintenance failure
+  starvation_threshold: 0.10 # acute starvation — reserve ratio below this is critical
+  b_bloom_threshold: 300.0  # biomass beyond which uptake exceeds dosing capacity
+  b_ref: 120.0              # normalizer for biomass rate cost (not a setpoint)
+  rho_risk_scale: 0.15      # scale for exponential starvation risk in terminal cost
+
 labeling:
-  # Option B — Precision Regulation (long-horizon, tracking-focused labels)
+  # Ecosystem Regulation — long-horizon biological health labels
   debug_mode: false
-  # periodic_repeat: re-apply candidate dose each cooldown interval during rollout
-  rollout_mode: periodic_repeat
-  horizon_steps: 30
+  rollout_mode: impulse  # single dose at step 0, consistent with deployment pattern
+  horizon_steps: 200             # raised from 30 — must cover full reserve→biomass cycle
   tie_break_epsilon: 0.005
-  disable_collapse_penalty: true
-  under_target_cost_relief: 0.0
-  target_band_pct: 0.05
-  time_weight_alpha: 2.0
-  steady_state_tail_fraction: 0.35
-  transient_aggression_tolerance: 1.5
   max_diagnostic_samples: 8
   candidate_flowrates: [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
   candidate_durations: [0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0]
+  # Cost function weights (ecosystem health)
   weights:
-    tracking: 1.4
-    recovery: 1.0
-    steady_state: 0.8
-    stability: 0.25
-    oscillation: 0.6
-    overshoot: 0.5
-    nutrient_cost: 0.2
-    action_smoothness: 0.15
-    action_rate: 0.1
-  overshoot:
-    mild_threshold_offset: 0.15
-    critical_threshold: 1.7
-    mild_weight: 0.35
-    severe_weight: 4.0
-  action_regularization:
-    smoothness_weight: 0.15
-    rate_change_weight: 0.1
-  collapse_penalty: 8.0
-  unsafe_terminal_penalty: 12.0
+    health: 1.5              # J_health — irreversibility guard
+    damage: 1.0              # J_damage — leading health indicator
+    reserve: 1.2             # J_reserve — primary dosing target
+    biomass_rate: 0.6        # Medium penalty: acceleration/velocity
+    biomass_envelope: 0.3    # Weak penalty: safe operating zone
+    maintenance: 2.0         # Strong penalty: root cause of detritus
+    detritus: 1.0            # Penalty for future dissolved nutrients
+    dissolved_inventory: 1.0 # Sustained tank loading
+    dissolved_accumulation: 3.0 # Very strong penalty: tank poisoning
+    osmotic: 5.0             # Dominant penalty: uptake shutdown
+    nutrient_cost: 0.25      # J_nutrient — pure dosing cost (decoupled from reserve)
+    action_smoothness: 0.15  # J_action — control smoothness
+  # Per-term thresholds
+  health_floor: 0.70          # mirrors ecosystem_control.health_floor
+  reserve_floor: 0.20         # mirrors ecosystem_control.reserve_floor
+  reserve_oscillation_weight: 0.5  # weight on var(rho) inside J_reserve
+  damage_rate_weight: 2.0     # weight on Δdamage vs accumulated damage in J_damage
+  nutrient_quadratic_weight: 0.5   # weight on (avg_dose)^2 in J_nutrient
+  tail_fraction: 0.35         # fraction of rollout used for tail metrics
+  b_ref: 120.0                # normalizer for J_biomass_rate
+  b_bloom_threshold: 300.0    # used in terminal cost V(s_T)
 
 preprocessing:
   sequence_length: 32
@@ -208,26 +218,23 @@ pid_tuning:
     initial_ecs: [0.85, 1.0, 1.2, 1.35]
     seeds: [42, 123, 456]
   regulatory_constraints:
-    max_ec_mae: 0.08
-    max_steady_state_error: 0.05
-    min_time_in_band: 0.90
-    max_collapse_fraction: 0.0
-    reject_settling_timeout: true
-    target_band_pct: 0.05
-    settling_band: 0.08
+    # Ecosystem health gates (replace EC-based gates)
+    min_health_mean_tail: 0.70       # mean health in last 35% of episode
+    max_biomass_cv_tail: 0.35        # biomass coefficient of variation in tail
+    min_reserve_floor_fraction: 0.60 # fraction of steps where rho > 0.20
+    max_starvation_fraction: 0.20    # fraction of steps where rho < 0.10
+    # Shared
     steady_state_tail_fraction: 0.35
   efficiency_weights:
     nutrient_usage: 0.4
     smoothness: 0.2
     aggressive_control: 0.3
   weights:
-    ec_mae: 1.0
-    overshoot: 0.8
-    oscillation: 0.5
+    # Secondary efficiency weights (used after feasibility gate)
+    health_mean: 1.0
+    damage_mean: 0.8
+    reserve_mean: 0.6
     nutrient_usage: 0.4
-    collapse_penalty: 1.5
-    aggressive_control: 0.3
-    instability: 0.4
     smoothness: 0.2
   pid_behavior:
     integral_min: -8.0

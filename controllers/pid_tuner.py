@@ -1,7 +1,9 @@
 """
-Systematic PID gain tuning for nonlinear algae-tank closed-loop control.
+Systematic PID gain tuning for algae ecosystem regulation.
 
+Regulates reserve ratio toward rho_setpoint (Droop half-quota).
 Multi-stage search: coarse grid → local refinement → stochastic validation.
+Regulatory feasibility gates are ecosystem-health based (not EC-based).
 """
 
 from __future__ import annotations
@@ -22,19 +24,33 @@ from simulation.environment import AlgaeTankEnvironment, EnvironmentConfig
 
 @dataclass
 class EpisodeMetrics:
-    """Per-episode control quality metrics."""
+    """Per-episode ecosystem regulation quality metrics."""
 
-    ec_mae: float = 0.0
-    overshoot: float = 0.0
-    settling_time: float = 0.0
-    steady_state_error: float = 0.0
-    time_in_band: float = 0.0
-    oscillation_amplitude: float = 0.0
+    # Ecosystem health (primary — used for regulatory gate)
+    health_mean_tail: float = 0.0      # mean health in last 35% of episode
+    biomass_cv_tail: float = 0.0       # biomass CV in tail (stability measure)
+    reserve_floor_fraction: float = 0.0  # fraction of steps with rho > 0.20
+    starvation_fraction: float = 0.0   # fraction of steps with rho < 0.10
+
+    # Ecosystem detail
+    reserve_mean: float = 0.0
+    damage_mean: float = 0.0
+    health_mean: float = 0.0
+    biomass_mean_tail: float = 0.0
+    bloom_fraction: float = 0.0        # fraction of steps with B > b_bloom_threshold
+
+    # Actuator use (efficiency gate)
     nutrient_usage: float = 0.0
     actuator_aggressiveness: float = 0.0
-    collapse_fraction: float = 0.0
-    instability_penalty: float = 0.0
     control_smoothness: float = 0.0
+
+    # Secondary EC diagnostics (not optimized, reported only)
+    ec_mean: float = 0.0
+    ec_std: float = 0.0
+    ec_min: float = 0.0
+    ec_max: float = 0.0
+
+    # Scoring
     regulatory_feasible: bool = False
     efficiency_score: float = 0.0
     score: float = 0.0
@@ -66,16 +82,13 @@ def _settling_time(ec: np.ndarray, target: float, dt: float, band: float = 0.08)
 
 
 def _regulatory_constraints(config: Dict[str, Any]) -> Dict[str, float]:
-    """Hard regulatory thresholds — tuning rejects candidates that violate any limit."""
+    """Ecosystem health thresholds — tuning rejects candidates that violate any limit."""
     rc = config.get("regulatory_constraints", {})
     return {
-        "max_ec_mae": rc.get("max_ec_mae", 0.08),
-        "max_steady_state_error": rc.get("max_steady_state_error", 0.05),
-        "min_time_in_band": rc.get("min_time_in_band", 0.90),
-        "max_collapse_fraction": rc.get("max_collapse_fraction", 0.0),
-        "reject_settling_timeout": rc.get("reject_settling_timeout", True),
-        "target_band_pct": rc.get("target_band_pct", 0.05),
-        "settling_band": rc.get("settling_band", 0.08),
+        "min_health_mean_tail":      rc.get("min_health_mean_tail", 0.70),
+        "max_biomass_cv_tail":       rc.get("max_biomass_cv_tail", 0.35),
+        "min_reserve_floor_fraction": rc.get("min_reserve_floor_fraction", 0.60),
+        "max_starvation_fraction":   rc.get("max_starvation_fraction", 0.20),
         "steady_state_tail_fraction": rc.get("steady_state_tail_fraction", 0.35),
     }
 
@@ -85,16 +98,14 @@ def _passes_regulatory_constraints(
     constraints: Dict[str, float],
     horizon_seconds: float,
 ) -> bool:
-    """Stage 1: candidate must regulate EC before efficiency is considered."""
-    if metrics.ec_mae > constraints["max_ec_mae"]:
+    """Stage 1: candidate must maintain ecosystem health before efficiency is considered."""
+    if metrics.health_mean_tail < constraints["min_health_mean_tail"]:
         return False
-    if abs(metrics.steady_state_error) > constraints["max_steady_state_error"]:
+    if metrics.biomass_cv_tail > constraints["max_biomass_cv_tail"]:
         return False
-    if metrics.time_in_band < constraints["min_time_in_band"]:
+    if metrics.reserve_floor_fraction < constraints["min_reserve_floor_fraction"]:
         return False
-    if metrics.collapse_fraction > constraints["max_collapse_fraction"]:
-        return False
-    if constraints["reject_settling_timeout"] and metrics.settling_time >= horizon_seconds - 1e-6:
+    if metrics.starvation_fraction > constraints["max_starvation_fraction"]:
         return False
     return True
 
@@ -105,6 +116,15 @@ def _efficiency_score(metrics: EpisodeMetrics, weights: Dict[str, float]) -> flo
         weights.get("nutrient_usage", 0.4) * metrics.nutrient_usage * 0.01
         + weights.get("smoothness", 0.2) * metrics.control_smoothness
         + weights.get("aggressive_control", 0.3) * metrics.actuator_aggressiveness
+    )
+def _efficiency_score(metrics: EpisodeMetrics, weights: Dict[str, float]) -> float:
+    """Stage 2: among healthy ecosystems, minimize resource use and control effort."""
+    return (
+        weights.get("nutrient_usage", 0.4)    * metrics.nutrient_usage * 0.01
+        + weights.get("smoothness", 0.2)      * metrics.control_smoothness
+        + weights.get("aggressive_control", 0.3) * metrics.actuator_aggressiveness
+        - weights.get("health_mean", 0.3)     * metrics.health_mean        # reward health
+        - weights.get("reserve_mean", 0.2)    * metrics.reserve_mean       # reward reserves
     )
 
 
@@ -119,10 +139,10 @@ def _candidate_score(
     """
     constraints = _regulatory_constraints(tune_cfg)
     feasible = _passes_regulatory_constraints(metrics, constraints, horizon_seconds)
-    if not feasible:
-        return float("inf"), False, float("inf")
     eff_weights = tune_cfg.get("efficiency_weights", tune_cfg.get("weights", {}))
     eff = _efficiency_score(metrics, eff_weights)
+    if not feasible:
+        return float("inf"), False, eff
     return eff, True, eff
 
 
@@ -130,51 +150,74 @@ def _metrics_from_trace(
     ec: np.ndarray,
     flowrate: np.ndarray,
     duration: np.ndarray,
+    state_trace: List["TankState"],  # type: ignore[name-defined]
     target: float,
     dt: float,
-    ec_safe_min: float,
+    internal_capacity: float,
+    b_bloom_threshold: float,
     tune_cfg: Dict[str, Any],
 ) -> EpisodeMetrics:
     constraints = _regulatory_constraints(tune_cfg)
-    band = constraints["target_band_pct"] * target
+    tail_frac   = constraints["steady_state_tail_fraction"]
+    tail_n      = max(20, int(len(ec) * tail_frac))
     horizon_seconds = float(len(ec) * dt)
 
-    errors = ec - target
-    ec_mae = float(np.mean(np.abs(errors)))
-    overshoot = float(np.max(np.maximum(0.0, ec - target)))
-    settling = _settling_time(
-        ec, target, dt, band=constraints["settling_band"]
-    )
-    tail_n = max(20, int(len(ec) * constraints["steady_state_tail_fraction"]))
-    tail = ec[-tail_n:]
-    tail_errors = tail - target
-    steady_state_error = float(np.mean(target - tail))
-    time_in_band = float(np.mean(np.abs(tail_errors) < band))
-    oscillation = float(np.std(tail) + 0.5 * (np.max(tail) - np.min(tail)))
-    nutrient = float(np.sum(flowrate * duration / 60.0))
-    d_fr = np.diff(flowrate, prepend=flowrate[0])
-    d_dur = np.diff(duration, prepend=duration[0])
+    # --- Ecosystem metrics from state trace ---
+    if state_trace:
+        rho_arr     = np.array([
+            float(np.clip(s.internal_reserve / max(s.algae_biomass * internal_capacity, 1e-6), 0.0, 1.0))
+            for s in state_trace
+        ])
+        health_arr  = np.array([s.health_index  for s in state_trace])
+        damage_arr  = np.array([s.damage_index  for s in state_trace])
+        biomass_arr = np.array([s.algae_biomass for s in state_trace])
+    else:
+        rho_arr = health_arr = damage_arr = biomass_arr = np.zeros(len(ec))
+
+    H_tail   = health_arr[-tail_n:]
+    B_tail   = biomass_arr[-tail_n:]
+    rho_all  = rho_arr
+
+    health_mean_tail      = float(np.mean(H_tail))
+    biomass_cv_tail       = float(np.std(B_tail) / (np.mean(B_tail) + 1e-6))
+    reserve_floor_frac    = float(np.mean(rho_all > 0.20))
+    starvation_frac       = float(np.mean(rho_all < 0.10))
+    bloom_frac            = float(np.mean(biomass_arr > b_bloom_threshold))
+
+    # Actuator metrics
+    dose         = flowrate * duration / 60.0
+    nutrient     = float(np.sum(dose))
+    d_fr         = np.diff(flowrate, prepend=flowrate[0])
+    d_dur        = np.diff(duration, prepend=duration[0])
     aggressiveness = float(np.mean(np.abs(d_fr)) + 0.1 * np.mean(np.abs(d_dur)))
-    smoothness = float(np.mean(d_fr**2) + 0.05 * np.mean(d_dur**2))
-    collapse_frac = float(np.mean(ec < ec_safe_min))
-    instability = float(np.mean(np.maximum(0.0, ec - target - 0.35) ** 2))
+    smoothness     = float(np.mean(d_fr**2) + 0.05 * np.mean(d_dur**2))
+
+    # Secondary EC diagnostics
+    ec_mean = float(np.mean(ec))
+    ec_std  = float(np.std(ec))
+
     m = EpisodeMetrics(
-        ec_mae=ec_mae,
-        overshoot=overshoot,
-        settling_time=settling,
-        steady_state_error=steady_state_error,
-        time_in_band=time_in_band,
-        oscillation_amplitude=oscillation,
+        health_mean_tail=health_mean_tail,
+        biomass_cv_tail=biomass_cv_tail,
+        reserve_floor_fraction=reserve_floor_frac,
+        starvation_fraction=starvation_frac,
+        reserve_mean=float(np.mean(rho_all)),
+        damage_mean=float(np.mean(damage_arr)),
+        health_mean=float(np.mean(health_arr)),
+        biomass_mean_tail=float(np.mean(B_tail)),
+        bloom_fraction=bloom_frac,
         nutrient_usage=nutrient,
         actuator_aggressiveness=aggressiveness,
-        collapse_fraction=collapse_frac,
-        instability_penalty=instability,
         control_smoothness=smoothness,
+        ec_mean=ec_mean,
+        ec_std=ec_std,
+        ec_min=float(np.min(ec)),
+        ec_max=float(np.max(ec)),
     )
     score, feasible, eff = _candidate_score(m, tune_cfg, horizon_seconds)
     m.regulatory_feasible = feasible
-    m.efficiency_score = eff
-    m.score = score
+    m.efficiency_score    = eff
+    m.score               = score
     return m
 
 
@@ -190,6 +233,7 @@ def evaluate_pid(
     water_temp: Optional[float] = None,
     initial_ec: Optional[float] = None,
     return_traces: bool = False,
+    enforce_constraints: bool = True,
 ) -> Tuple[float, Dict[str, float], Optional[Dict[str, np.ndarray]]]:
     """
     Run closed-loop PID episodes; return (mean_score, aggregated_metrics, optional last trace).
@@ -200,7 +244,7 @@ def evaluate_pid(
     ec_target = sim.get("ec_target", 1.2)
     dt = sim.get("dt_seconds", 60.0)
 
-    params = TankDynamicsParams.from_config(dyn, ec_target=ec_target)
+    params = TankDynamicsParams.from_config(dyn)
     env_cfg = EnvironmentConfig(
         dt_seconds=dt,
         ec_target=ec_target,
@@ -221,17 +265,20 @@ def evaluate_pid(
     agg: Dict[str, List[float]] = {
         k: []
         for k in [
-            "ec_mae",
-            "overshoot",
-            "settling_time",
-            "steady_state_error",
-            "time_in_band",
-            "oscillation_amplitude",
+            "health_mean_tail",
+            "biomass_cv_tail",
+            "reserve_floor_fraction",
+            "starvation_fraction",
+            "reserve_mean",
+            "damage_mean",
+            "health_mean",
+            "biomass_mean_tail",
+            "bloom_fraction",
             "nutrient_usage",
             "actuator_aggressiveness",
-            "collapse_fraction",
-            "instability_penalty",
             "control_smoothness",
+            "ec_mean",
+            "ec_std",
             "efficiency_score",
         ]
     }
@@ -246,15 +293,21 @@ def evaluate_pid(
 
         temp = water_temp if water_temp is not None else params.ambient_temp_mean + ep_rng.normal(0, 1.5)
         ec0 = initial_ec if initial_ec is not None else ec_target + ep_rng.normal(0, 0.1)
-        s0 = TankState.create_initial(params, ec=ec0, water_temp=temp, rng=ep_rng)
+        s0 = TankState.create_initial(params, dissolved_mass=ec0 / params.sensor_gain_ec, water_temp=temp, rng=ep_rng)
 
         env = AlgaeTankEnvironment(
             env_cfg, params, rng=ep_rng, disturbance_generator=dist_gen
         )
         env.reset(initial_state=s0, disturbance_schedule=schedule)
 
+        dyn = config.get("dynamics", {})
+        eco = config.get("ecosystem_control", {})
+        internal_capacity  = float(dyn.get("internal_capacity", eco.get("internal_capacity", 0.5)))
+        b_bloom_threshold  = float(eco.get("b_bloom_threshold", 300.0))
+        rho_setpoint       = float(eco.get("rho_setpoint", 0.50))
+
         pid = PIDController(
-            setpoint=ec_target,
+            setpoint=rho_setpoint,       # regulate reserve ratio, not EC
             gains=PIDGains(kp=kp, ki=ki, kd=kd),
             config=pid_cfg,
             flowrate_max=env_cfg.flowrate_max,
@@ -265,28 +318,48 @@ def evaluate_pid(
         )
 
         ec_h, fr_h, dur_h = [], [], []
+        state_trace: List[TankState] = []
         for t in range(episode_length):
-            ec_val = env.state.ec if env.state else ec_target
-            fr, dur = pid.compute(ec_val)
+            s = env.state
+            ec_val = s.ec if s else ec_target
             ec_h.append(ec_val)
-            fr_h.append(fr)
-            dur_h.append(dur)
+            fr_h.append(env.state.prev_flowrate if env.state else 0.0)
+            dur_h.append(env.state.prev_duration if env.state else 0.0)
+            state_trace.append(s)
+            fr, dur = pid.compute_from_reserve(s, internal_capacity)
+            fr_h[-1] = fr
+            dur_h[-1] = dur
             env.step((fr, dur))
 
         ec_arr = np.array(ec_h)
         fr_arr = np.array(fr_h)
         dur_arr = np.array(dur_h)
         m = _metrics_from_trace(
-            ec_arr, fr_arr, dur_arr, ec_target, dt, env_cfg.ec_safe_min, tune
+            ec_arr, fr_arr, dur_arr, state_trace,
+            ec_target, dt, internal_capacity, b_bloom_threshold, tune,
         )
+        if not enforce_constraints:
+            m.score = m.efficiency_score
         episode_scores.append(m.score)
         regulatory_pass.append(m.regulatory_feasible)
         for k in agg:
             agg[k].append(getattr(m, k))
         if return_traces and ep == n_episodes - 1:
-            last_trace = {"ec": ec_arr, "flowrate": fr_arr, "duration": dur_arr, "target": ec_target, "dt": dt}
+            biomass_arr = np.array([s.algae_biomass for s in state_trace])
+            health_arr = np.array([s.health_index for s in state_trace])
+            rho_arr = np.array([np.clip(s.internal_reserve / max(s.algae_biomass * internal_capacity, 1e-6), 0.0, 1.0) for s in state_trace])
+            last_trace = {
+                "ec": ec_arr, 
+                "flowrate": fr_arr, 
+                "duration": dur_arr, 
+                "target": ec_target, 
+                "dt": dt,
+                "biomass": biomass_arr,
+                "health": health_arr,
+                "rho": rho_arr,
+            }
 
-    if not all(regulatory_pass):
+    if not all(regulatory_pass) and enforce_constraints:
         mean_score = float("inf")
     else:
         mean_score = float(np.mean(episode_scores))
@@ -477,6 +550,7 @@ class PIDTuner:
                             seed=seed,
                             water_temp=temp,
                             initial_ec=ec0,
+                            enforce_constraints=False,
                         )
                         all_scores.append(sc)
                         breakdown.append({
@@ -497,6 +571,7 @@ class PIDTuner:
                 episode_length=long_length,
                 disturbance_mode="normal",
                 seed=seed,
+                enforce_constraints=False,
             )
             long_scores.append(sc)
 
@@ -550,14 +625,17 @@ class PIDTuner:
         val_report = self.run_stochastic_validation(best_ref)
         print(f"Validation mean score: {val_report['mean_score']:.4f} (std={val_report['std_score']:.4f})")
 
+        val_cfg = self.tune_cfg.get("validation", {})
+        long_len = val_cfg.get("long_horizon_length", 3000)
         _, metrics, trace = evaluate_pid(
             best_ref.kp, best_ref.ki, best_ref.kd,
             self.config,
             n_episodes=1,
-            episode_length=self.tune_cfg.get("evaluation", {}).get("episode_length", 500),
+            episode_length=long_len,
             disturbance_mode="normal",
             seed=42,
             return_traces=True,
+            enforce_constraints=False,
         )
 
         self.results["best"] = {

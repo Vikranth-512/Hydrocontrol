@@ -33,7 +33,7 @@ dynamics:
   algae_sensor_tau: 0.045
   immediate_absorption_fraction: 0.28
   delay_kernel: [0.15, 0.25, 0.30, 0.20, 0.10]
-  max_queue_release_rate: 0.048
+  max_queue_release_rate: 0.55   # raised from 0.048 — must cover peak kernel slot at max dose (0.54 mass/step)
   release_damping: 0.85
   background_dilution_rate: 0.002
   maximum_uptake_rate: 0.015
@@ -69,6 +69,10 @@ evaluation:
     ki: 0.08
     kd: 0.4
 
+ecosystem_control:
+  rho_setpoint: 0.30
+  b_bloom_threshold: 300.0
+
 pid_tuning:
   enabled: true
   coarse_search:
@@ -99,13 +103,11 @@ pid_tuning:
     initial_ecs: [1.0, 1.2]
     seeds: [42, 123]
   regulatory_constraints:
-    max_ec_mae: 0.08
-    max_steady_state_error: 0.05
-    min_time_in_band: 0.90
-    max_collapse_fraction: 0.0
-    reject_settling_timeout: true
-    target_band_pct: 0.05
-    settling_band: 0.08
+    # Ecosystem health gates
+    min_health_mean_tail: 0.70
+    max_biomass_cv_tail: 0.35
+    min_reserve_floor_fraction: 0.60
+    max_starvation_fraction: 0.20
     steady_state_tail_fraction: 0.35
   efficiency_weights:
     nutrient_usage: 0.4
