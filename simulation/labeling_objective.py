@@ -72,6 +72,9 @@ class LabelingObjectiveConfig:
     osmotic_safe_threshold: float = 0.2
 
     # Sub-term weights
+    reserve_setpoint_weight: float = 2.0      # weight on setpoint tracking in J_reserve
+    reserve_low_weight: float = 2.0          # weight on (rho_target - rho)^2 for depleted reserves
+    reserve_high_weight: float = 0.5         # weight on (rho - rho_target)^2 for excessive reserves
     reserve_oscillation_weight: float = 0.5   # var(rho) inside J_reserve
     damage_rate_weight: float = 2.0           # Δdamage vs accumulated damage
     nutrient_quadratic_weight: float = 0.5    # (avg_dose)^2 in J_nutrient
@@ -131,6 +134,9 @@ class LabelingObjectiveConfig:
             maintenance_rate=float(dyn.get("maintenance_cost", 0.0005)),
             osmotic_safe_threshold=float(dyn.get("osmotic_safe_threshold", 0.2)),
             # Sub-term weights
+            reserve_setpoint_weight=float(labeling.get("reserve_setpoint_weight", 2.0)),
+            reserve_low_weight=float(labeling.get("reserve_low_weight", 2.0)),
+            reserve_high_weight=float(labeling.get("reserve_high_weight", 0.5)),
             reserve_oscillation_weight=float(labeling.get("reserve_oscillation_weight", 0.5)),
             damage_rate_weight=float(labeling.get("damage_rate_weight", 2.0)),
             nutrient_quadratic_weight=float(labeling.get("nutrient_quadratic_weight", 0.5)),
@@ -242,16 +248,28 @@ def _damage_cost(damage_trace: np.ndarray, cfg: LabelingObjectiveConfig) -> floa
 
 def _reserve_cost(rho_trace: np.ndarray, cfg: LabelingObjectiveConfig) -> float:
     """
-    J_reserve = mean[ max(0, rho_floor - rho)^2 ] + λ_osc × var(rho)
+    J_reserve = λ_starv × mean[ max(0, rho_floor - rho)^2 ] + λ_setpoint × [w_low × max(0, rho_target - rho)^2 + w_high × max(0, rho - rho_target)^2] + λ_osc × var(rho)
 
-    Quadratic floor: smooth gradient away from starvation boundary.
-    Normalized by reserve_floor so that hitting 0 rho gives a cost of 1.0.
+    Three components:
+    1. Starvation penalty: smooth gradient away from starvation boundary
+    2. Asymmetric setpoint tracking: penalize low reserves more heavily than high reserves
+    3. Oscillation penalty: stability of reserves
+
+    Asymmetric weighting reflects biology: depleted reserves (rho < target) are more dangerous than excessive reserves (rho > target).
+    Normalized by reserve_floor for starvation, rho_setpoint for setpoint deviations.
     """
     floor_deficit = np.maximum(0.0, cfg.reserve_floor - rho_trace)
     norm_deficit = floor_deficit / max(cfg.reserve_floor, 1e-6)
     starvation_cost = float(np.mean(norm_deficit ** 2))
+    
+    # Asymmetric setpoint tracking: penalize low reserves more heavily than high reserves
+    low_deficit = np.maximum(0.0, cfg.rho_setpoint - rho_trace) / max(cfg.rho_setpoint, 1e-6)
+    high_excess = np.maximum(0.0, rho_trace - cfg.rho_setpoint) / max(cfg.rho_setpoint, 1e-6)
+    setpoint_cost = float(np.mean(cfg.reserve_low_weight * low_deficit ** 2 + cfg.reserve_high_weight * high_excess ** 2))
+    
     oscillation_cost = float(np.var(rho_trace))
-    return starvation_cost + cfg.reserve_oscillation_weight * oscillation_cost
+    
+    return starvation_cost + cfg.reserve_setpoint_weight * setpoint_cost + cfg.reserve_oscillation_weight * oscillation_cost
 
 
 def _biomass_envelope_cost(biomass_trace: np.ndarray, cfg: LabelingObjectiveConfig) -> float:

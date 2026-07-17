@@ -20,6 +20,7 @@ from controllers.pid_controller import PIDConfig, PIDController, PIDGains
 from simulation.disturbances import DisturbanceConfig, DisturbanceGenerator
 from simulation.dynamics import TankDynamicsParams, TankState
 from simulation.environment import AlgaeTankEnvironment, EnvironmentConfig
+from training.evaluation import compute_ecosystem_metrics
 
 
 @dataclass
@@ -280,6 +281,13 @@ def evaluate_pid(
             "ec_mean",
             "ec_std",
             "efficiency_score",
+            "damage_cumulative",
+            "collapse_free_duration",
+            "biomass_persistence",
+            "dose_per_health",
+            "ec_min",
+            "ec_max",
+            "ec_range",
         ]
     }
     regulatory_pass: List[bool] = []
@@ -334,10 +342,46 @@ def evaluate_pid(
         ec_arr = np.array(ec_h)
         fr_arr = np.array(fr_h)
         dur_arr = np.array(dur_h)
-        m = _metrics_from_trace(
-            ec_arr, fr_arr, dur_arr, state_trace,
-            ec_target, dt, internal_capacity, b_bloom_threshold, tune,
+        
+        # Use standard ecosystem metrics function for consistency
+        metrics_dict = compute_ecosystem_metrics(
+            state_trace, fr_arr, dur_arr, params, dt, b_bloom_threshold
         )
+        
+        # Map standard metrics to PID tuning field names for compatibility
+        m = EpisodeMetrics(
+            health_mean_tail=metrics_dict.get("health_mean_tail", 0.0),
+            biomass_cv_tail=metrics_dict.get("biomass_cv_tail", 0.0),
+            reserve_floor_fraction=metrics_dict.get("reserve_floor_frac", 0.0),
+            starvation_fraction=metrics_dict.get("starvation_fraction", 0.0),
+            reserve_mean=metrics_dict.get("reserve_mean", 0.0),
+            damage_mean=metrics_dict.get("damage_mean", 0.0),
+            health_mean=metrics_dict.get("health_mean", 0.0),
+            biomass_mean_tail=metrics_dict.get("biomass_mean", 0.0),
+            bloom_fraction=metrics_dict.get("bloom_fraction", 0.0),
+            nutrient_usage=metrics_dict.get("total_dose", 0.0),
+            actuator_aggressiveness=metrics_dict.get("control_smoothness", 0.0),  # Using smoothness as proxy
+            control_smoothness=metrics_dict.get("control_smoothness", 0.0),
+            ec_mean=metrics_dict.get("ec_mean", 0.0),
+            ec_std=metrics_dict.get("ec_std", 0.0),
+            ec_min=metrics_dict.get("ec_min", 0.0),
+            ec_max=metrics_dict.get("ec_max", 0.0),
+        )
+        
+        # Add additional metrics for aggregation
+        m.damage_cumulative = metrics_dict.get("damage_cumulative", 0.0)
+        m.collapse_free_duration = metrics_dict.get("collapse_free_duration", 0)
+        m.biomass_persistence = metrics_dict.get("biomass_persistence", 0.0)
+        m.dose_per_health = metrics_dict.get("dose_per_health", 0.0)
+        m.ec_range = metrics_dict.get("ec_range", 0.0)
+        
+        # Calculate efficiency score for PID tuning
+        horizon_seconds = float(len(ec_arr) * dt)
+        score, feasible, eff = _candidate_score(m, tune, horizon_seconds)
+        m.regulatory_feasible = feasible
+        m.efficiency_score = eff
+        m.score = score
+        
         if not enforce_constraints:
             m.score = m.efficiency_score
         episode_scores.append(m.score)
@@ -363,10 +407,18 @@ def evaluate_pid(
         mean_score = float("inf")
     else:
         mean_score = float(np.mean(episode_scores))
+    
+    # Convert aggregated metrics to standard field names for consistency
     mean_metrics = {k: float(np.mean(v)) for k, v in agg.items()}
     mean_metrics["score_std"] = float(np.std(episode_scores))
     mean_metrics["regulatory_feasible"] = all(regulatory_pass)
     mean_metrics["score"] = mean_score
+    
+    # Add standard field name mappings for JSON export
+    mean_metrics["reserve_floor_frac"] = mean_metrics.get("reserve_floor_fraction", 0.0)
+    mean_metrics["total_dose"] = mean_metrics.get("nutrient_usage", 0.0)
+    mean_metrics["biomass_mean"] = mean_metrics.get("biomass_mean_tail", 0.0)  # Standard uses biomass_mean
+    
     if return_traces:
         return mean_score, mean_metrics, last_trace
     return mean_score, mean_metrics, None

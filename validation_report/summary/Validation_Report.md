@@ -13,8 +13,9 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- Max Absolute Error: 8.122e-07
-- RMS Error: 1.832e-07
+- Max Absolute Error: 983.2
+- RMS Error: 711.6
+- Tolerance: 1090
 
 **Plots Generated:**
 - `conservation_error.png`
@@ -24,9 +25,9 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- Mass Lost: 4.535
-- Cumulative Dilution: 4.492
-- Fraction Accounted: 0.9905
+- Mass Lost: 4.954
+- Cumulative Dilution: 4.943
+- Fraction Accounted: 0.9979
 
 **Plots Generated:**
 - `dilution_bookkeeping.png`
@@ -49,7 +50,7 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- Empirical Vmax: 0.406
+- Empirical Vmax: 0.4284
 - Expected Vmax (approx): 0.416
 
 **Plots Generated:**
@@ -62,7 +63,7 @@ This document contains the automated scientific validation results for the mecha
 **Metrics:**
 - Final Reserve (Baseline): 0
 - Final Reserve (No Uptake): 0
-- Final Biomass (Baseline): 94.63
+- Final Biomass (Baseline): 41.3
 
 **Plots Generated:**
 - `starvation_baseline.png`
@@ -83,8 +84,8 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- Uptake at Low Conc: 0.4055
-- Uptake at High Conc: 0.01343
+- Uptake at Low Conc: 0.4278
+- Uptake at High Conc: 0.03761
 
 **Plots Generated:**
 - `osmotic_curve.png`
@@ -95,7 +96,7 @@ This document contains the automated scientific validation results for the mecha
 
 **Metrics:**
 - Number of Reserve Increases: 0
-- Final Reserve: 1.572
+- Final Reserve: 2.174
 
 **Plots Generated:**
 - `reserve_isolation.png`
@@ -105,8 +106,8 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- Growth (high dissolved, t=0..10): -0.2767
-- Growth (high reserve, t=0..10): 0.7394
+- Growth (high dissolved, t=0..10): -0.7836
+- Growth (high reserve, t=0..10): -0.05202
 
 **Plots Generated:**
 - `growth_limitation.png`
@@ -116,9 +117,9 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- Starvation Loss: 7.064
-- Osmotic Loss: 6.739
-- Heat Loss: 37.77
+- Starvation Loss: 20.71
+- Osmotic Loss: 8.044
+- Heat Loss: 28.19
 
 **Plots Generated:**
 - `mortality_channels.png`
@@ -128,7 +129,7 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- Mineralization Half-Life (min): 599
+- Mineralization Half-Life (min): 1999
 
 **Plots Generated:**
 - `mineralization.png`
@@ -138,9 +139,9 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- Minimum Health: 0.0214
+- Minimum Health: 0.9561
 - Final Health: 1
-- Recovery Delta: 0.9786
+- Recovery Delta: 0.04393
 
 **Plots Generated:**
 - `health_hysteresis.png`
@@ -150,8 +151,8 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- Final Biomass Mean: 1061
-- Final Biomass Std: 166
+- Final Biomass Mean: 364.9
+- Final Biomass Std: 18.8
 
 **Plots Generated:**
 - `attractor_convergence.png`
@@ -161,8 +162,8 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- Low Biomass Net Growth: 0.02319
-- High Biomass Net Growth: -0.3144
+- Low Biomass Net Growth: 0.01818
+- High Biomass Net Growth: -1.314
 
 **Plots Generated:**
 - `net_growth_limit.png`
@@ -175,14 +176,14 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- dt=30s Biomass Final: 187
+- dt=30s Biomass Final: 143.4
 - dt=30s Biomass Error vs 30s: 0
-- dt=60s Biomass Final: 187.1
-- dt=60s Biomass Error vs 30s: 0.1453
-- dt=120s Biomass Final: 187.3
-- dt=120s Biomass Error vs 30s: 0.276
-- dt=300s Biomass Final: 187.2
-- dt=300s Biomass Error vs 30s: 0.2647
+- dt=60s Biomass Final: 143.5
+- dt=60s Biomass Error vs 30s: 0.09978
+- dt=120s Biomass Final: 143.6
+- dt=120s Biomass Error vs 30s: 0.1983
+- dt=300s Biomass Final: 143.6
+- dt=300s Biomass Error vs 30s: 0.2308
 
 **Plots Generated:**
 - `timestep_sensitivity.png`
@@ -194,11 +195,11 @@ This document contains the automated scientific validation results for the mecha
 **Metrics:**
 - NaN Count: 0
 - Inf Count: 0
-- Max Biomass: 1200
-- Max Dissolved: 0.182
-- Avg Growth: 0.2697
-- Avg Mortality: 0.0001833
-- Final Biomass: 1009
+- Max Biomass: 1199
+- Max Dissolved: 0.03647
+- Avg Growth: 0.1793
+- Avg Mortality: 9.984e-07
+- Final Biomass: 79.96
 - Final Health: 1
 
 **Plots Generated:**
@@ -210,14 +211,10 @@ This document contains the automated scientific validation results for the mecha
 
 **Metrics:**
 - uptake_capped_by_dissolved: 0
-- maintenance_capped_by_reserve: 8944
 - growth_capped_by_reserve: 0
 - mortality_capped_at_95pct: 0
 - damage_clipped_0: 0
 - damage_clipped_1: 0
-
-**Warnings:**
-- WARNING: High clipping rate: 8944/10000
 
 **Plots Generated:**
 - `clipping_analysis.png`
@@ -230,9 +227,9 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- Final Dissolved: 293
-- Final Biomass: 11.34
-- Final Health: 0.008844
+- Final Dissolved: 223.4
+- Final Biomass: 10.17
+- Final Health: 0.01516
 
 **Plots Generated:**
 - `toxic_accumulation.png`
@@ -242,10 +239,10 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- Dissolved CV (tail): 0.0001537
-- Biomass CV (tail): 0.0001344
-- Tail Mean Dissolved: 0.1257
-- Tail Mean Biomass: 824.8
+- Dissolved CV (tail): 0.01549
+- Biomass CV (tail): 0.02371
+- Tail Mean Dissolved: 0.03626
+- Tail Mean Biomass: 54.01
 
 **Plots Generated:**
 - `dynamic_equilibrium.png`
@@ -267,8 +264,8 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- Total Biomass Change: 159.6
-- Final Biomass: 259.6
+- Total Biomass Change: -12.57
+- Final Biomass: 87.43
 
 **Plots Generated:**
 - `repeated_pulse.png`
@@ -293,7 +290,7 @@ This document contains the automated scientific validation results for the mecha
 
 **Metrics:**
 - Peak Lag (steps): 0
-- Peak Correlation: 0.998
+- Peak Correlation: 0.9999
 - Sensor Tau: 0.045
 
 **Plots Generated:**
@@ -320,12 +317,12 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- MI(Reserve, EC): 0.4284
-- MI(Health, EC): 0.5737
-- MI(Reserve, Turbidity): 2.471
-- MI(Health, Turbidity): 0.2353
-- MI(Dead Pool, Turbidity): 1.871
-- MI(Damage, EC): 0.5737
+- MI(Reserve, EC): 0.4572
+- MI(Health, EC): 0.2317
+- MI(Reserve, Turbidity): 2.166
+- MI(Health, Turbidity): 0.231
+- MI(Dead Pool, Turbidity): 2.154
+- MI(Damage, EC): 0.2317
 
 **Plots Generated:**
 - `observability_matrix.png`
@@ -335,11 +332,11 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- Survival Rate (%): 33.0%
-- EC Range: [0.12, 118.18]
-- Biomass Range: [1.94, 475.96]
-- Reserve Range: [0.00, 177.68]
-- Health Range: [0.00, 1.00]
+- Survival Rate (%): 99.5%
+- EC Range: [0.05, 75.13]
+- Biomass Range: [2.24, 358.80]
+- Reserve Range: [0.19, 124.47]
+- Health Range: [0.05, 1.00]
 
 **Plots Generated:**
 - `state_space_coverage.png`
@@ -352,8 +349,8 @@ This document contains the automated scientific validation results for the mecha
 - Delay to Dissolved (steps): 1
 - Delay to EC (steps): 1
 - Delay to Reserve (steps): 1
-- Delay to Biomass (steps): 37
-- Delay to Turbidity (steps): 40
+- Delay to Biomass (steps): 14
+- Delay to Turbidity (steps): 17
 
 **Plots Generated:**
 - `impulse_chain.png`
@@ -380,11 +377,11 @@ This document contains the automated scientific validation results for the mecha
 **Metrics:**
 - NaN Count: 0
 - Inf Count: 0
-- EC Mean: 42.38
-- EC Std: 44.99
-- Biomass Mean: 244.8
-- Biomass Std: 217.7
-- Health Mean: 0.5474
+- EC Mean: 24.27
+- EC Std: 28.95
+- Biomass Mean: 193.7
+- Biomass Std: 150.8
+- Health Mean: 0.6342
 
 **Plots Generated:**
 - `monte_carlo.png`
@@ -397,10 +394,10 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- EC (init=0.0): 0.018
-- EC (init=2.0): 0.01785
-- EC (init=4.0): 0.01897
-- EC (init=8.0): 0.021
+- EC (init=0.0): 0.006133
+- EC (init=2.0): 0.006662
+- EC (init=4.0): 0.007188
+- EC (init=8.0): 0.008227
 
 **Warnings:**
 - WARNING: Note: The transient dissolved nutrient increase from high initial conditions is physically consistent. It is caused by osmotic-driven mortality releasing nutrients back to the dissolved pool faster than dilution removes them.
@@ -413,8 +410,8 @@ This document contains the automated scientific validation results for the mecha
 **Status:** PASS
 
 **Metrics:**
-- dEC/dt Residual RMSE: 1.832e-17
-- dEC/dt Max Residual: 4.441e-16
+- dEC/dt Residual RMSE: 1.466e-17
+- dEC/dt Max Residual: 3.469e-16
 
 **Plots Generated:**
 - `dec_dt_mass_balance.png`

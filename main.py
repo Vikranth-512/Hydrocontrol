@@ -111,12 +111,15 @@ def stage_preprocess(config: dict, paths: dict) -> dict:
 
     sim = config.get("simulation", {})
     prep = config.get("preprocessing", {})
+    dyn = config.get("dynamics", {})
     fe = FeatureEngineer(
         ec_target=sim.get("ec_target", 1.2),
         rolling_window=prep.get("rolling_window", 8),
+        include_biological=prep.get("include_biological_features", False),
+        internal_capacity=dyn.get("internal_capacity", 0.5),
     )
     df = fe.transform(df)
-    feature_cols = fe.feature_columns
+    feature_cols = fe.get_available_feature_columns(df)
     target_cols = ["optimal_flowrate", "optimal_duration"]
 
     sb = SequenceBuilder(
@@ -201,63 +204,49 @@ def stage_evaluate(config: dict, paths: dict, trainer: Trainer, preprocessed: di
     device = trainer.device
     model = trainer.model
     evaluator = ClosedLoopEvaluator(config, seed=config.get("seed", 42))
-    comparison = evaluator.compare_all(
+    
+    # Run LSTM with PID tuning conditions (3500 long horizon run)
+    lstm_pid_conditions = evaluator.run_learned_policy_pid_conditions(
         model, normalizer, feature_cols, device=device
     )
 
-    for scenario, ctrls in comparison.items():
-        plotter.plot_controller_comparison(
-            {scenario: ctrls},
-            config["simulation"]["ec_target"],
-            config["simulation"]["dt_seconds"],
-            scenario=scenario,
-        )
-        lstm_traj = ctrls["lstm"]["trajectory"]
-        plotter.plot_ec_trajectory(
-            lstm_traj["ec"],
-            config["simulation"]["ec_target"],
-            config["simulation"]["dt_seconds"],
-            name=f"lstm_ec_{scenario}",
-        )
-        plotter.plot_dosing_behavior(
-            lstm_traj["flowrate"],
-            lstm_traj["duration"],
-            config["simulation"]["dt_seconds"],
-            name=f"lstm_dosing_{scenario}",
-        )
-        if "turbidity_true" in lstm_traj:
-            plotter.plot_turbidity_trajectory(
-                lstm_traj["turbidity_true"],
-                config["simulation"]["dt_seconds"],
-                name=f"lstm_turbidity_{scenario}",
-            )
-        if "pending_nutrients" in lstm_traj:
-            plotter.plot_delayed_absorption(
-                lstm_traj["pending_nutrients"],
-                lstm_traj["ec"],
-                config["simulation"]["dt_seconds"],
-                name=f"lstm_delayed_{scenario}",
-            )
+    # Generate new evaluation figures (3 figures for 3500 long horizon run)
+    dt = config["simulation"]["dt_seconds"]
+    reserve_target = config.get("ecosystem_control", {}).get("rho_setpoint", 0.50)
+    
+    print("Generating LSTM evaluation figures for 3500 long horizon run...")
+    plotter.plot_long_horizon_overview(lstm_pid_conditions, dt, reserve_target)
+    plotter.plot_lstm_smoothness(lstm_pid_conditions, dt)
+    plotter.plot_nutrient_efficiency(lstm_pid_conditions, dt)
+    print("All 3 evaluation figures generated successfully.")
 
-    normal_metrics = {
-        c: comparison["normal"][c]["metrics"]
-        for c in ["pid", "rule_based", "lstm"]
-    }
-    plotter.plot_stability_analysis(normal_metrics)
-    plotter.plot_metrics_table(comparison)
-
+    # Save results - only save specific metrics and trajectory arrays (exclude state_trace)
     results_path = paths["processed"] / "evaluation_results.json"
+    
+    # Extract only the requested metrics
+    requested_metrics = [
+        "health_mean", "health_mean_tail", "damage_mean", "damage_cumulative",
+        "reserve_mean", "reserve_floor_frac", "starvation_fraction",
+        "biomass_mean", "biomass_cv_tail", "bloom_fraction",
+        "collapse_free_duration", "biomass_persistence",
+        "total_dose", "dose_per_health", "control_smoothness",
+        "ec_mean", "ec_std", "ec_min", "ec_max", "ec_range"
+    ]
+    
+    metrics_dict = lstm_pid_conditions["metrics"]
+    filtered_metrics = {k: metrics_dict.get(k) for k in requested_metrics}
+    
+    # Only save prediction metrics and LSTM metrics (no trajectory data)
     serializable = {
         "prediction_metrics": pred_metrics,
-        "closed_loop": {
-            sc: {c: comparison[sc][c]["metrics"] for c in comparison[sc]}
-            for sc in comparison
+        "long_horizon_lstm": {
+            "metrics": filtered_metrics,
         },
     }
     with open(results_path, "w") as f:
         json.dump(serializable, f, indent=2)
-
-    return serializable
+    
+    return {"long_horizon_lstm": lstm_pid_conditions}
 
 
 def stage_export(config: dict, paths: dict, trainer: Trainer, preprocessed: dict) -> None:
@@ -379,7 +368,36 @@ def main() -> None:
                 print(f"Validation mean score: {v.get('mean_score', 0):.4f}")
                 print(f"Validation std:      {v.get('std_score', 0):.4f}")
                 print(f"Long-horizon score:  {v.get('long_horizon_mean', 0):.4f}")
+            
+            # Save PID metrics as separate JSON file
             if best.get("metrics"):
+                metrics = best["metrics"]
+                pid_metrics = {
+                    "health_mean": metrics.get("health_mean"),
+                    "health_mean_tail": metrics.get("health_mean_tail"),
+                    "damage_mean": metrics.get("damage_mean"),
+                    "damage_cumulative": metrics.get("damage_cumulative"),
+                    "reserve_mean": metrics.get("reserve_mean"),
+                    "reserve_floor_frac": metrics.get("reserve_floor_frac", metrics.get("reserve_floor_fraction")),
+                    "starvation_fraction": metrics.get("starvation_fraction"),
+                    "biomass_mean": metrics.get("biomass_mean_tail"),  # PID uses biomass_mean_tail
+                    "biomass_cv_tail": metrics.get("biomass_cv_tail"),
+                    "bloom_fraction": metrics.get("bloom_fraction"),
+                    "collapse_free_duration": metrics.get("collapse_free_duration"),
+                    "biomass_persistence": metrics.get("biomass_persistence"),
+                    "total_dose": metrics.get("total_dose", metrics.get("nutrient_usage")),
+                    "dose_per_health": metrics.get("dose_per_health"),
+                    "control_smoothness": metrics.get("control_smoothness"),
+                    "ec_mean": metrics.get("ec_mean"),
+                    "ec_std": metrics.get("ec_std"),
+                    "ec_min": metrics.get("ec_min"),
+                    "ec_max": metrics.get("ec_max"),
+                    "ec_range": metrics.get("ec_range"),
+                }
+                pid_metrics_path = fig_dir / "pid_metrics.json"
+                with open(pid_metrics_path, "w") as f:
+                    json.dump(pid_metrics, f, indent=2)
+                print(f"PID metrics saved to: {pid_metrics_path}")
                 print("Metrics:", best["metrics"])
             print(f"\nResults saved: {out_json}")
             print(f"Figures saved:  {fig_dir}")

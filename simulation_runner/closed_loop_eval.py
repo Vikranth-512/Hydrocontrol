@@ -46,9 +46,7 @@ class ClosedLoopEvaluator:
             min_time_between_doses=sim.get("min_time_between_doses", 120.0),
             noise_std=sim.get("noise_std"),
         )
-        self.params = TankDynamicsParams.from_config(
-            dyn, ec_target=sim.get("ec_target", 1.2)
-        )
+        self.params = TankDynamicsParams.from_config(dyn)
         self.disturbance_config = DisturbanceConfig.from_config(
             config.get("disturbances", {})
         )
@@ -58,6 +56,7 @@ class ClosedLoopEvaluator:
         self.feature_engineer = FeatureEngineer(
             ec_target=self.ec_target,
             rolling_window=config.get("preprocessing", {}).get("rolling_window", 8),
+            internal_capacity=dyn.get("internal_capacity", 0.5),
         )
         self.sequence_length = config.get("preprocessing", {}).get("sequence_length", 32)
 
@@ -73,9 +72,13 @@ class ClosedLoopEvaluator:
         controller_fn: Callable[[Dict[str, float], int], Tuple[float, float]],
         scenario: str = "normal",
         noise_multiplier: float = 1.0,
+        custom_length: Optional[int] = None,
+        custom_seed: Optional[int] = None,
+        custom_water_temp: Optional[float] = None,
+        custom_initial_ec: Optional[float] = None,
     ) -> Dict[str, np.ndarray]:
         """Single closed-loop rollout."""
-        length = self.steps
+        length = custom_length if custom_length is not None else self.steps
         disturbances = self._build_disturbance_schedule(scenario, length)
 
         noise_std = {
@@ -103,17 +106,27 @@ class ClosedLoopEvaluator:
                 }
             )
 
-        dist_gen = DisturbanceGenerator(self.disturbance_config, self.rng)
+        # Use custom seed if provided
+        episode_rng = np.random.default_rng(custom_seed) if custom_seed is not None else self.rng
+        dist_gen = DisturbanceGenerator(self.disturbance_config, episode_rng)
         env = AlgaeTankEnvironment(
-            env_cfg, params, rng=self.rng, disturbance_generator=dist_gen
+            env_cfg, params, rng=episode_rng, disturbance_generator=dist_gen
         )
-        obs = env.reset(disturbance_schedule=disturbances)
+        
+        # Handle custom initial conditions
+        if custom_water_temp is not None or custom_initial_ec is not None:
+            temp = custom_water_temp if custom_water_temp is not None else params.ambient_temp_mean
+            ec0 = custom_initial_ec if custom_initial_ec is not None else self.ec_target
+            s0 = TankState.create_initial(params, dissolved_mass=ec0 / params.sensor_gain_ec, water_temp=temp, rng=episode_rng)
+            obs = env.reset(initial_state=s0, disturbance_schedule=disturbances)
+        else:
+            obs = env.reset(disturbance_schedule=disturbances)
         keys = env.observation_keys
 
         history = {
             k: []
             for k in keys
-            + ["ec_true", "turbidity_true", "flowrate", "duration", "pending_nutrients", "health_index"]
+            + ["ec_true", "turbidity_true", "flowrate", "duration", "pending_nutrients", "health_index", "biomass", "reserve_ratio"]
         }
         rolling_rows = []
         state_trace: List[TankState] = []
@@ -150,6 +163,12 @@ class ClosedLoopEvaluator:
                 env.state.pending_nutrients if env.state else 0.0
             )
             history["health_index"].append(env.state.health_index if env.state else 0.0)
+            history["biomass"].append(env.state.algae_biomass if env.state else 0.0)
+            if env.state:
+                reserve_ratio = env.state.internal_reserve / (env.state.algae_biomass * self.params.internal_capacity + 1e-6)
+            else:
+                reserve_ratio = 0.0
+            history["reserve_ratio"].append(reserve_ratio)
             history["flowrate"].append(fr)
             history["duration"].append(dur)
 
@@ -162,19 +181,43 @@ class ClosedLoopEvaluator:
             "duration": np.array(history["duration"]),
             "state_trace": state_trace,
             "history": {k: np.array(v) for k, v in history.items()},
+            "health": np.array(history["health_index"]),
+            "biomass": np.array(history["biomass"]),
+            "reserve_ratio": np.array(history["reserve_ratio"]),
+            "damage": np.array([s.damage_index for s in state_trace]),
         }
 
     def run_pid(self, scenario: str = "normal") -> Dict[str, Any]:
         ev = self.config.get("evaluation", {})
-        pid_cfg = ev.get("pid", {})
         behavior = self.config.get("pid_tuning", {}).get("pid_behavior", {})
+        
+        # Try to load tuned PID gains from tuning results
+        import yaml
+        from pathlib import Path
+        tuned_pid_path = Path("data/processed/pid_tuned_gains.yaml")
+        
+        if tuned_pid_path.exists():
+            with open(tuned_pid_path, "r") as f:
+                tuned_config = yaml.safe_load(f)
+                pid_gains = tuned_config.get("evaluation", {}).get("pid", {})
+                kp = pid_gains.get("kp", ev.get("pid", {}).get("kp", 2.0))
+                ki = pid_gains.get("ki", ev.get("pid", {}).get("ki", 0.05))
+                kd = pid_gains.get("kd", ev.get("pid", {}).get("kd", 0.3))
+                print(f"Using tuned PID gains: kp={kp}, ki={ki}, kd={kd}")
+        else:
+            # Fallback to config values
+            pid_cfg = ev.get("pid", {})
+            kp = pid_cfg.get("kp", 2.0)
+            ki = pid_cfg.get("ki", 0.05)
+            kd = pid_cfg.get("kd", 0.3)
+            print(f"Using config PID gains: kp={kp}, ki={ki}, kd={kd}")
+        
+        # Use reserve-based control like the tuner (not EC-based)
+        reserve_target = self.config.get("ecosystem_control", {}).get("rho_setpoint", 0.50)
+        
         pid = PIDController(
-            setpoint=self.ec_target,
-            gains=PIDGains(
-                kp=pid_cfg.get("kp", 2.0),
-                ki=pid_cfg.get("ki", 0.05),
-                kd=pid_cfg.get("kd", 0.3),
-            ),
+            setpoint=reserve_target,  # Use reserve target like tuner
+            gains=PIDGains(kp=kp, ki=ki, kd=kd),
             config=PIDConfig(**behavior) if behavior else None,
             flowrate_max=self.env_config.flowrate_max,
             duration_max=self.env_config.duration_max,
@@ -184,7 +227,20 @@ class ClosedLoopEvaluator:
         )
 
         def ctrl(obs_dict, t):
-            return pid.compute(obs_dict["ec"])
+            # Use reserve-based control like the tuner
+            # Reconstruct TankState-like object from observation dict
+            biomass = obs_dict.get("biomass", 1.0)
+            reserve_ratio = obs_dict.get("reserve_ratio", 0.5)
+            internal_capacity = self.params.internal_capacity
+            
+            # Create a simple object with the required attributes for compute_from_reserve
+            class SimpleState:
+                def __init__(self, biomass, reserve_ratio, internal_capacity):
+                    self.algae_biomass = biomass
+                    self.internal_reserve = reserve_ratio * biomass * internal_capacity
+            
+            state = SimpleState(biomass, reserve_ratio, internal_capacity)
+            return pid.compute_from_reserve(state, internal_capacity)
 
         traj = self.run_episode(ctrl, scenario=scenario)
         metrics = compute_ecosystem_metrics(
@@ -219,6 +275,10 @@ class ClosedLoopEvaluator:
         feature_columns: List[str],
         scenario: str = "normal",
         device: str = "cpu",
+        custom_length: Optional[int] = None,
+        custom_seed: Optional[int] = None,
+        custom_water_temp: Optional[float] = None,
+        custom_initial_ec: Optional[float] = None,
     ) -> Dict[str, Any]:
         model = model.to(device)
         model.eval()
@@ -239,11 +299,40 @@ class ClosedLoopEvaluator:
                 np.clip(action[1], 0, self.env_config.duration_max)
             )
 
-        traj = self.run_episode(ctrl, scenario=scenario)
+        traj = self.run_episode(ctrl, scenario=scenario, custom_length=custom_length, custom_seed=custom_seed, custom_water_temp=custom_water_temp, custom_initial_ec=custom_initial_ec)
         metrics = compute_ecosystem_metrics(
             traj["state_trace"], traj["flowrate"], traj["duration"], self.params, self.dt
         )
         return {"trajectory": traj, "metrics": metrics, "controller": "lstm_policy"}
+
+    def run_learned_policy_pid_conditions(
+        self,
+        model: LSTMPolicy,
+        normalizer: FeatureNormalizer,
+        feature_columns: List[str],
+        device: str = "cpu",
+    ) -> Dict[str, Any]:
+        """Run LSTM with same conditions as PID tuning (long horizon, normal disturbance, seed 42)."""
+        # PID tuning validation conditions (from pid_tuner.py lines 628-639)
+        val_cfg = self.config.get("pid_tuning", {}).get("validation", {})
+        long_length = val_cfg.get("long_horizon_length", 3500)
+        
+        # Use same random initialization as PID evaluation
+        # PID: temp = params.ambient_temp_mean + ep_rng.normal(0, 1.5)
+        # PID: ec0 = ec_target + ep_rng.normal(0, 0.1)
+        pid_rng = np.random.default_rng(42)
+        temp = self.params.ambient_temp_mean + pid_rng.normal(0, 1.5)
+        ec0 = self.ec_target + pid_rng.normal(0, 0.1)
+        
+        return self.run_learned_policy(
+            model, normalizer, feature_columns,
+            scenario="normal",
+            device=device,
+            custom_length=long_length,
+            custom_seed=42,
+            custom_water_temp=temp,
+            custom_initial_ec=ec0,
+        )
 
     def compare_all(
         self,
@@ -265,8 +354,6 @@ class ClosedLoopEvaluator:
         for sc in scenarios:
             noise_mult = 3.0 if sc == "sensor_noise" else 1.0
             results[sc] = {
-                "pid": self.run_pid(sc),
-                "rule_based": self.run_rule_based(sc),
                 "lstm": self.run_learned_policy(
                     model, normalizer, feature_columns, sc, device
                 ),

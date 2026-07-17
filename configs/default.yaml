@@ -53,9 +53,17 @@ dynamics:
   biomass_nutrient_content: 0.1
   mortality_rate: 0.0002
   mineralization_rate: 0.002
+  mineralization_efficiency: 0.3  # Fraction of dead biomass that mineralizes to dissolved
   maintenance_to_detritus_fraction: 0.5
+  maintenance_to_dissolved_fraction: 0.2  # Fraction of maintenance waste recycled to dissolved
+  maintenance_lost_fraction: 0.6  # Fraction of maintenance permanently lost
+  growth_metabolic_efficiency: 0.7  # Fraction of growth nutrients incorporated into biomass
+  nutrient_retention_efficiency: 0.5  # Overall nutrient retention (0.35-0.6 recommended)
+  harvest_rate: 0.0005  # Fraction of biomass harvested per timestep
   damage_rate: 0.0001
   repair_rate: 0.01
+  starvation_damage_multiplier: 2.0  # Additional damage under starvation
+  starvation_reserve_threshold: 0.15  # Reserve ratio below which starvation stress applies
   osmotic_half_effect: 5.0
   osmotic_safe_threshold: 0.2
   basal_repair_rate: 0.0003
@@ -96,7 +104,7 @@ disturbances:
 # Ecosystem control shared parameters (used by PID, labeler, and tuner)
 # ---------------------------------------------------------------------------
 ecosystem_control:
-  rho_setpoint: 0.30        # reserve ratio reference operating point (Droop half-quota)
+  rho_setpoint: 0.50        # reserve ratio reference operating point (Droop half-quota) - increased from 0.30 to encourage healthier reserves
   internal_capacity: 0.5    # mirrors dynamics.internal_capacity — used for rho computation
   health_floor: 0.70        # health below this drives elevated mortality cost
   reserve_floor: 0.20       # starvation boundary; buffer ~100 steps before maintenance failure
@@ -109,7 +117,7 @@ labeling:
   # Ecosystem Regulation — long-horizon biological health labels
   debug_mode: false
   rollout_mode: impulse  # single dose at step 0, consistent with deployment pattern
-  horizon_steps: 200             # raised from 30 — must cover full reserve→biomass cycle
+  horizon_steps: 100             # reduced from 200 based on CHST results showing 95.2% action agreement
   tie_break_epsilon: 0.005
   max_diagnostic_samples: 8
   candidate_flowrates: [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
@@ -132,6 +140,9 @@ labeling:
   health_floor: 0.70          # mirrors ecosystem_control.health_floor
   reserve_floor: 0.20         # mirrors ecosystem_control.reserve_floor
   reserve_oscillation_weight: 0.5  # weight on var(rho) inside J_reserve
+  reserve_setpoint_weight: 2.0     # weight on setpoint tracking in J_reserve - encourages healthy reserve operating point
+  reserve_low_weight: 2.0         # weight on (rho_target - rho)^2 for depleted reserves - asymmetric penalty
+  reserve_high_weight: 0.5        # weight on (rho - rho_target)^2 for excessive reserves - asymmetric penalty
   damage_rate_weight: 2.0     # weight on Δdamage vs accumulated damage in J_damage
   nutrient_quadratic_weight: 0.5   # weight on (avg_dose)^2 in J_nutrient
   tail_fraction: 0.35         # fraction of rollout used for tail metrics
@@ -139,13 +150,15 @@ labeling:
   b_bloom_threshold: 300.0    # used in terminal cost V(s_T)
 
 preprocessing:
-  sequence_length: 32
+  sequence_length: 64
   prediction_horizon: 1
   train_ratio: 0.7
   val_ratio: 0.15
   test_ratio: 0.15
   scaler_type: standard
   rolling_window: 8
+  include_biological_features: true
+  internal_capacity: 0.5  # MUST match dynamics.internal_capacity for consistent reserve_ratio
 
 model:
   input_size: null
@@ -160,26 +173,32 @@ training:
   learning_rate: 0.001
   weight_decay: 1.0e-5
   grad_clip: 1.0
-  loss_type: control_aware
+  loss_type: action_pair_weighted_huber  # Use joint action pair frequency weighting
+  max_weight_multiplier: 4.0  # Maximum weight as multiple of majority class weight
+  huber_beta: 1.0  # Beta parameter for Huber loss
+  quantize_bins: 10  # Number of bins to quantize continuous actions for frequency computation
+  # Legacy parameters for weighted_masked_huber (not used with action_pair_weighted_huber)
+  auto_compute_weights: true
+  flowrate_positive_weight: null
+  flowrate_zero_weight: null
+  duration_positive_weight: null
+  duration_zero_weight: null
   control_loss_weights:
     action: 1.0
     instability: 0.2
     aggressive_change: 0.15
-    excessive_dose: 0.1
+    excessive_dose: 0.0  # EC-based penalty, set to 0
   early_stopping_patience: 12
   lr_scheduler: reduce_on_plateau
   lr_factor: 0.5
   lr_patience: 5
 
 evaluation:
-  closed_loop_steps: 200
+  closed_loop_steps: 3500
   pid:
-    kp: 2.5
-    ki: 0.08
-    kd: 0.4
-  rule_based:
-    ec_low_threshold: 0.9
-    ec_high_threshold: 1.4
+    kp: 2.683
+    ki: 0.05
+    kd: 0.126
 
 pid_tuning:
   enabled: true

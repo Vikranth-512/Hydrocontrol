@@ -65,11 +65,19 @@ class TankDynamicsParams:
     # Biology (Mortality & Recycling)
     mortality_rate: float = 0.0002
     mineralization_rate: float = 0.002
+    mineralization_efficiency: float = 0.3  # Fraction of dead biomass that mineralizes to dissolved
     maintenance_to_detritus_fraction: float = 0.5
+    maintenance_to_dissolved_fraction: float = 0.2  # Fraction of maintenance waste recycled to dissolved
+    maintenance_lost_fraction: float = 0.6  # Fraction of maintenance permanently lost (respiration, CO2, etc.)
+    growth_metabolic_efficiency: float = 0.7  # Fraction of growth nutrients actually incorporated into biomass
+    nutrient_retention_efficiency: float = 0.5  # Overall nutrient retention (0.35-0.6 recommended)
+    harvest_rate: float = 0.0005  # Fraction of biomass harvested per timestep
     
     # Biology (Health & Damage)
     damage_rate: float = 0.0001
     repair_rate: float = 0.01
+    starvation_damage_multiplier: float = 2.0  # Additional damage under starvation
+    starvation_reserve_threshold: float = 0.15  # Reserve ratio below which starvation stress applies
     osmotic_half_effect: float = 5.0
     osmotic_safe_threshold: float = 0.2
     basal_repair_rate: float = 0.0003
@@ -204,6 +212,10 @@ class TankState:
         # Use uniform(120, 300) to represent varied actuator history
         time_since = rng.uniform(120.0, 300.0)
         
+        # Fix 5: Lower initial reserve from 50% to 20%
+        # Fix 6: Lower initial dissolved nutrient from 1.5 to 0.7
+        dm0 = dissolved_mass if dissolved_mass is not None else 0.7 + rng.normal(0, 0.03)
+        
         s = cls(
             water_temp=float(wt),
             ph=7.2 + rng.normal(0, 0.05),
@@ -213,7 +225,7 @@ class TankState:
             pending_doses=[],
             dissolved_nutrient_mass=float(dm0),
             algae_biomass=float(b0),
-            internal_reserve=float(b0 * params.internal_capacity * 0.5), # start half full
+            internal_reserve=float(b0 * params.internal_capacity * 0.2), # start 20% full
             dead_biomass_pool=0.0,
             health_index=1.0,
             damage_index=0.0,
@@ -324,11 +336,14 @@ def step_dynamics(
 
     # 2. Mixing & Dissolved Nutrient Pool
     # First-order exponential decay updates for dilution and mineralization
-    dil_rate = (params.background_dilution_rate + params.ec_decay_jitter) * thermal_respiration
+    # Fix 8: Increase dilution rate slightly
+    dil_rate = (params.background_dilution_rate * 2.0 + params.ec_decay_jitter) * thermal_respiration
     dilution = state.dissolved_nutrient_mass * (1.0 - np.exp(-dil_rate * dt_scale))
     
+    # Fix 2: Reduce mineralization efficiency
     min_rate = params.mineralization_rate * thermal_respiration
     mineralized = state.dead_biomass_pool * (1.0 - np.exp(-min_rate * dt_scale))
+    mineralized *= params.mineralization_efficiency  # Only 30% of dead biomass mineralizes
 
     dissolved_new = state.dissolved_nutrient_mass + immediate_mass + released_mass + mineralized - dilution
 
@@ -359,20 +374,40 @@ def step_dynamics(
     dissolved_new -= uptake_mass
     reserve_new = state.internal_reserve + uptake_mass
 
-    # 4. Maintenance (Consumes reserve, waste split between dissolved pool and dead pool)
-    maintenance_cost = params.maintenance_cost * state.algae_biomass * thermal_respiration * dt_scale
+    # 4. Maintenance (Consumes reserve, waste split between dissolved pool, dead pool, and permanent loss)
+    # Fix 4: Increase maintenance demand slightly (1.3x)
+    maintenance_cost = params.maintenance_cost * 1.3 * state.algae_biomass * thermal_respiration * dt_scale
+    
+    # Fix 9: Make maintenance efficiency depend on reserve ratio (strengthened)
+    # Option 3: Maintenance should become progressively inefficient
+    reserve_ratio_maint = reserve_new / max(state.algae_biomass * params.internal_capacity, 1e-6)
+    # More aggressive curve: efficiency drops more sharply with low reserves
+    maintenance_efficiency = 0.1 + 0.9 * (reserve_ratio_maint ** 0.5)  # 0.1 at ratio=0, 1.0 at ratio=1
+    maintenance_cost *= maintenance_efficiency
+    
     actual_maintenance = min(maintenance_cost, reserve_new)
     reserve_new -= actual_maintenance
     maintenance_deficit = maintenance_cost - actual_maintenance
     
-    maint_to_dissolved = actual_maintenance * (1.0 - params.maintenance_to_detritus_fraction)
+    # Fix 1: Irreversible nutrient losses in maintenance
+    # 20% dissolved, 20% detritus, 60% permanently lost
+    maint_to_dissolved = actual_maintenance * params.maintenance_to_dissolved_fraction
     maint_to_dead = actual_maintenance * params.maintenance_to_detritus_fraction
+    maint_lost = actual_maintenance * params.maintenance_lost_fraction  # Permanently lost
+    
+    # Apply nutrient retention efficiency
+    maint_to_dissolved *= params.nutrient_retention_efficiency
+    maint_to_dead *= params.nutrient_retention_efficiency
+    
     dissolved_new += maint_to_dissolved
 
     # 5. Biomass Growth
     reserve_ratio = reserve_new / max(state.algae_biomass * params.internal_capacity, 1e-6)
     
-    growth_drive = reserve_ratio * thermal_growth * osmotic_factor
+    # Fix 10: Starvation adaptation - growth more sensitive than maintenance
+    # Growth drive decreases more sharply with low reserves
+    starvation_adaptation = np.clip(reserve_ratio / 0.3, 0.0, 1.0)  # Growth drops below ratio=0.3
+    growth_drive = reserve_ratio * thermal_growth * osmotic_factor * starvation_adaptation
     growth_amount = params.maximum_growth_rate * growth_drive * light_factor * state.algae_biomass * dt_scale
 
     nutrient_cost_per_biomass = params.biomass_nutrient_content / params.growth_yield
@@ -384,8 +419,11 @@ def step_dynamics(
 
     reserve_new -= required_reserve
     biomass_new = state.algae_biomass + growth_amount
-    waste = required_reserve - (growth_amount * params.biomass_nutrient_content)
-    dissolved_new += waste # Respiration/growth waste recycled
+    
+    # Fix 3: Growth metabolic efficiency - 70% incorporated, 30% respired/lost
+    waste = required_reserve * (1.0 - params.growth_metabolic_efficiency)
+    waste *= params.nutrient_retention_efficiency  # Apply retention efficiency
+    dissolved_new += waste
 
     # 6. Mortality
     # Mortality increases with heat/cold stress, using Arrhenius/Q10 behavior
@@ -401,16 +439,33 @@ def step_dynamics(
     
     reserve_new -= proportional_reserve
     dead_pool_new = state.dead_biomass_pool - mineralized + dead_nutrient + proportional_reserve + maint_to_dead
+    
+    # Fix 7: Harvesting loss - small fraction of biomass removed per timestep
+    harvest_amount = biomass_new * params.harvest_rate * dt_scale
+    biomass_new -= harvest_amount
+    harvest_nutrient = harvest_amount * params.biomass_nutrient_content
+    # Harvested nutrients are permanently lost (removed from system)
 
     # 7. Health Evolution
     # Damage uses dimensionless intensive ratio with logistic bounded kinetics
     deficit_ratio = maintenance_deficit / max(maintenance_cost, 1e-6)
-    stress_drive = deficit_ratio * 1.0 + osmotic_stress * 2.0
+    
+    # Option 2: Add starvation stress to damage computation
+    # Additional damage when reserve ratio is below threshold
+    reserve_ratio_health = reserve_new / max(biomass_new * params.internal_capacity, 1e-6)
+    starvation_stress = max(0.0, params.starvation_reserve_threshold - reserve_ratio_health) / params.starvation_reserve_threshold
+    starvation_stress *= params.starvation_damage_multiplier
+    
+    stress_drive = deficit_ratio * 1.0 + osmotic_stress * 2.0 + starvation_stress
     damage_inc = stress_drive * params.damage_rate * dt_scale * (1.0 - state.damage_index)
+    
+    # Option 1: Repair depends strongly on reserve ratio
+    # Repair capacity decreases with reserve depletion
+    repair_reserve_factor = np.clip(reserve_ratio_health / 0.3, 0.0, 1.0)  # Repair drops below ratio=0.3
     
     # Repair is based on maintenance flux being met, with a basal rate and damage power scaling
     repair_availability = actual_maintenance / max(maintenance_cost, 1e-6)
-    repair_drive = params.repair_rate * repair_availability * thermal_respiration + params.basal_repair_rate
+    repair_drive = params.repair_rate * repair_availability * thermal_respiration * repair_reserve_factor + params.basal_repair_rate * repair_reserve_factor
     repair_inc = repair_drive * dt_scale * (state.damage_index ** 0.7)
 
     damage_new = state.damage_index + damage_inc - repair_inc
