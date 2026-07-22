@@ -699,10 +699,10 @@ class PIDTuner:
             "regulatory_feasible": np.isfinite(best_ref.mean_score),
             "validation": val_report,
             "metrics": metrics,
-        }
-        self.results["reference_trace"] = {
-            k: v.tolist() if isinstance(v, np.ndarray) else v
-            for k, v in (trace or {}).items()
+            "trajectory": {
+                k: (v.tolist() if isinstance(v, np.ndarray) else v)
+                for k, v in (trace or {}).items()
+            },  # Add trajectory data for comparison plotting (convert arrays to lists)
         }
         return self.results
 

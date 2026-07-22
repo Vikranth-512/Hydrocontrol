@@ -249,6 +249,79 @@ def stage_evaluate(config: dict, paths: dict, trainer: Trainer, preprocessed: di
     return {"long_horizon_lstm": lstm_pid_conditions}
 
 
+def stage_compare(config: dict, paths: dict) -> None:
+    """Run both LSTM and PID pipelines and generate comparison plots."""
+    from pathlib import Path
+    import yaml
+    
+    # Create compare directory
+    compare_dir = paths["figures"] / "compare"
+    compare_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Comparison figures will be saved to: {compare_dir}")
+    
+    # Step 1: Run LSTM evaluation (3500 steps)
+    print("\n" + "=" * 60)
+    print("STEP 1: Running LSTM evaluation (3500 steps)")
+    print("=" * 60)
+    
+    # Need to run the full pipeline up to evaluation
+    # Run feature engineering and training first
+    print("Running feature engineering...")
+    preprocessed = stage_preprocess(config, paths)
+    
+    print("Training LSTM model...")
+    trainer = stage_train(config, paths, preprocessed)
+    
+    print("Running LSTM evaluation...")
+    lstm_results = stage_evaluate(config, paths, trainer, preprocessed)
+    
+    # Load LSTM metrics from evaluation results
+    lstm_metrics_path = paths["processed"] / "evaluation_results.json"
+    with open(lstm_metrics_path, "r") as f:
+        lstm_data = json.load(f)
+    lstm_metrics = lstm_data["long_horizon_lstm"]["metrics"]
+    
+    # Step 2: Run PID tuning (3500 steps)
+    print("\n" + "=" * 60)
+    print("STEP 2: Running PID tuning (3500 steps)")
+    print("=" * 60)
+    
+    out_json = paths["processed"] / "pid_tuning_results.json"
+    fig_dir = paths["figures"] / "pid_tuning"
+    pid_results = run_pid_tuning(config, out_json, fig_dir)
+    pid_best = pid_results.get("best", {})
+    
+    # Load PID metrics from the saved file
+    pid_metrics_path = fig_dir / "pid_metrics.json"
+    with open(pid_metrics_path, "r") as f:
+        pid_metrics = json.load(f)
+    
+    # Step 3: Generate comparison plots
+    print("\n" + "=" * 60)
+    print("STEP 3: Generating comparison plots")
+    print("=" * 60)
+    
+    plotter = Plotter(compare_dir)
+    dt = config["simulation"]["dt_seconds"]
+    reserve_target = config.get("ecosystem_control", {}).get("rho_setpoint", 0.50)
+    
+    # Generate 10 comparison plots
+    print("Generating comparison plots...")
+    plotter.plot_compare_biomass(lstm_results["long_horizon_lstm"], pid_best, dt)
+    plotter.plot_compare_health(lstm_results["long_horizon_lstm"], pid_best, dt)
+    plotter.plot_compare_reserve(lstm_results["long_horizon_lstm"], pid_best, dt, reserve_target)
+    plotter.plot_compare_dosing(lstm_results["long_horizon_lstm"], pid_best, dt)
+    plotter.plot_compare_ec(lstm_results["long_horizon_lstm"], pid_best, dt)
+    plotter.plot_compare_biomass_vs_dose(lstm_metrics, pid_metrics)
+    plotter.plot_compare_cumulative_dose(lstm_results["long_horizon_lstm"], pid_best, dt)
+    plotter.plot_compare_radar(lstm_metrics, pid_metrics)
+    plotter.plot_compare_tradeoff(lstm_metrics, pid_metrics)
+    plotter.plot_compare_parallel_coordinates(lstm_metrics, pid_metrics)
+    
+    print(f"\nAll comparison plots saved to: {compare_dir}")
+    print("Comparison complete!")
+
+
 def stage_export(config: dict, paths: dict, trainer: Trainer, preprocessed: dict) -> None:
     print("=== Stage: Model export ===")
     model = trainer.model
@@ -286,6 +359,7 @@ def main() -> None:
             "evaluate",
             "export",
             "tune_pid",
+            "compare",
         ],
     )
     args = parser.parse_args()
@@ -409,6 +483,10 @@ def main() -> None:
                     f,
                 )
             print(f"Tuned gains YAML: {tuned_pid_path}")
+
+    if args.stage == "compare":
+        print("=== Stage: PID vs LSTM Comparison ===")
+        stage_compare(config, paths)
 
     print("Pipeline complete.")
 
