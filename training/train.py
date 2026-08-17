@@ -16,8 +16,8 @@ from torch.utils.data import DataLoader
 from models.lstm_policy import LSTMPolicy
 from preprocessing.normalization import FeatureNormalizer
 from preprocessing.sequence_builder import SequenceDataset
-from training.evaluation import compute_prediction_metrics
-from training.losses import ControlAwareLoss, mse_loss
+from training.evaluation import compute_prediction_metrics, compute_intervention_metrics_from_regression
+from training.losses import ActionPairWeightedHuberLoss, ControlAwareLoss, WeightedMaskedHuberLoss, mse_loss
 
 
 class Trainer:
@@ -37,6 +37,12 @@ class Trainer:
             "val_loss": [],
             "val_rmse": [],
             "val_mae": [],
+            "train_flowrate_loss": [],
+            "train_duration_loss": [],
+            "train_unweighted_loss": [],
+            "train_weighted_flowrate_loss": [],
+            "train_weighted_duration_loss": [],
+            "batch_weight_mean": [],
         }
 
     def build_model(self, input_size: int) -> LSTMPolicy:
@@ -53,9 +59,27 @@ class Trainer:
 
     def _get_loss_fn(self):
         tcfg = self.config.get("training", {})
-        if tcfg.get("loss_type", "control_aware") == "mse":
+        loss_type = tcfg.get("loss_type", "action_pair_weighted_huber")
+        
+        if loss_type == "mse":
             return lambda p, t, prev=None: mse_loss(p, t)
-        return ControlAwareLoss(weights=tcfg.get("control_loss_weights"))
+        elif loss_type == "action_pair_weighted_huber":
+            return ActionPairWeightedHuberLoss(
+                max_weight_multiplier=tcfg.get("max_weight_multiplier", 4.0),
+                beta=tcfg.get("huber_beta", 1.0),
+                quantize_bins=tcfg.get("quantize_bins", 10),
+            )
+        elif loss_type == "weighted_masked_huber":
+            return WeightedMaskedHuberLoss(
+                flowrate_positive_weight=tcfg.get("flowrate_positive_weight", None),
+                flowrate_zero_weight=tcfg.get("flowrate_zero_weight", None),
+                duration_positive_weight=tcfg.get("duration_positive_weight", None),
+                duration_zero_weight=tcfg.get("duration_zero_weight", None),
+                auto_compute_weights=tcfg.get("auto_compute_weights", True),
+                beta=tcfg.get("huber_beta", 1.0),
+            )
+        else:
+            return ControlAwareLoss(weights=tcfg.get("control_loss_weights"))
 
     def train(
         self,
@@ -96,33 +120,89 @@ class Trainer:
         patience = tcfg.get("early_stopping_patience", 12)
         grad_clip = tcfg.get("grad_clip", 1.0)
         epochs = tcfg.get("epochs", 80)
-
-        prev_batch_pred = None
+        is_weighted_masked = isinstance(loss_fn, WeightedMaskedHuberLoss)
+        is_action_pair_weighted = isinstance(loss_fn, ActionPairWeightedHuberLoss)
+        
+        # Compute weights from training data if using weighted loss
+        if is_weighted_masked and loss_fn.auto_compute_weights:
+            y_train_tensor = torch.from_numpy(y_train).float()
+            loss_fn.compute_weights_from_data(y_train_tensor)
+        elif is_action_pair_weighted:
+            y_train_tensor = torch.from_numpy(y_train).float()
+            loss_fn.compute_weights_from_data(y_train_tensor)
+            # Print weight statistics
+            weight_stats = loss_fn.weight_stats
+            print(f"[ACTION_PAIR_WEIGHTED_LOSS] Weight Statistics:")
+            print(f"  Zero-action fraction: {weight_stats['zero_action_fraction']:.3f}")
+            print(f"  Unique action pairs: {weight_stats['num_unique_pairs']}")
+            print(f"  Min weight: {weight_stats['min_weight']:.3f}")
+            print(f"  Max weight: {weight_stats['max_weight']:.3f}")
+            print(f"  Mean weight: {weight_stats['mean_weight']:.3f}")
+            print(f"  Std weight: {weight_stats['std_weight']:.3f}")
+            print(f"  Majority pair: {weight_stats['majority_pair']}")
+            print(f"  Majority freq: {weight_stats['majority_freq']}")
 
         for epoch in range(epochs):
             self.model.train()
             train_losses = []
+            train_flowrate_losses = []
+            train_duration_losses = []
+            train_unweighted_losses = []
+            train_weighted_flowrate_losses = []
+            train_weighted_duration_losses = []
+            batch_weight_means = []
+            
             for xb, yb in train_loader:
                 xb, yb = xb.to(self.device), yb.to(self.device)
                 optimizer.zero_grad()
+                
                 pred = self.model(xb)
-                if isinstance(loss_fn, ControlAwareLoss):
-                    loss = loss_fn(pred, yb, prev_batch_pred)
+                
+                if is_action_pair_weighted:
+                    loss_dict = loss_fn(pred, yb)
+                    loss = loss_dict['total_loss']
+                    train_losses.append(loss.item())
+                    train_unweighted_losses.append(loss_dict['unweighted_loss'].item())
+                    train_flowrate_losses.append(loss_dict['flowrate_loss'].item())
+                    train_duration_losses.append(loss_dict['duration_loss'].item())
+                    train_weighted_flowrate_losses.append(loss_dict['weighted_flowrate_loss'].item())
+                    train_weighted_duration_losses.append(loss_dict['weighted_duration_loss'].item())
+                    batch_weight_means.append(loss_dict['batch_weight_mean'])
+                elif is_weighted_masked:
+                    loss_dict = loss_fn(pred, yb)
+                    loss = loss_dict['total_loss']
+                    train_losses.append(loss.item())
+                    train_flowrate_losses.append(loss_dict['flowrate_loss'].item())
+                    train_duration_losses.append(loss_dict['duration_loss'].item())
+                elif isinstance(loss_fn, ControlAwareLoss):
+                    loss = loss_fn(pred, yb)
+                    train_losses.append(loss.item())
                 else:
                     loss = loss_fn(pred, yb)
+                    train_losses.append(loss.item())
+                
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.model.parameters(), grad_clip)
                 optimizer.step()
-                train_losses.append(loss.item())
-                prev_batch_pred = pred.detach()
 
-            val_loss, val_metrics = self._validate(val_loader, loss_fn, normalizer)
+            val_loss, val_metrics = self._validate(val_loader, loss_fn, normalizer, is_weighted_masked, is_action_pair_weighted)
             scheduler.step(val_loss)
 
             self.history["train_loss"].append(float(np.mean(train_losses)))
             self.history["val_loss"].append(val_loss)
-            self.history["val_rmse"].append(val_metrics["rmse"])
-            self.history["val_mae"].append(val_metrics["mae"])
+            self.history["val_rmse"].append(val_metrics.get("rmse", 0.0))
+            self.history["val_mae"].append(val_metrics.get("mae", 0.0))
+            
+            if is_action_pair_weighted:
+                self.history["train_unweighted_loss"].append(float(np.mean(train_unweighted_losses)))
+                self.history["train_flowrate_loss"].append(float(np.mean(train_flowrate_losses)))
+                self.history["train_duration_loss"].append(float(np.mean(train_duration_losses)))
+                self.history["train_weighted_flowrate_loss"].append(float(np.mean(train_weighted_flowrate_losses)))
+                self.history["train_weighted_duration_loss"].append(float(np.mean(train_weighted_duration_losses)))
+                self.history["batch_weight_mean"].append(float(np.mean(batch_weight_means)))
+            elif is_weighted_masked:
+                self.history["train_flowrate_loss"].append(float(np.mean(train_flowrate_losses)))
+                self.history["train_duration_loss"].append(float(np.mean(train_duration_losses)))
 
             if val_loss < best_val:
                 best_val = val_loss
@@ -158,6 +238,8 @@ class Trainer:
         val_loader: DataLoader,
         loss_fn,
         normalizer: FeatureNormalizer,
+        is_weighted_masked: bool = False,
+        is_action_pair_weighted: bool = False,
     ) -> Tuple[float, Dict[str, float]]:
         assert self.model is not None
         self.model.eval()
@@ -165,11 +247,20 @@ class Trainer:
 
         for xb, yb in val_loader:
             xb, yb = xb.to(self.device), yb.to(self.device)
+            
             pred = self.model(xb)
-            if isinstance(loss_fn, ControlAwareLoss):
+            
+            if is_action_pair_weighted:
+                loss_dict = loss_fn(pred, yb)
+                loss = loss_dict['total_loss']
+            elif is_weighted_masked:
+                loss_dict = loss_fn(pred, yb)
+                loss = loss_dict['total_loss']
+            elif isinstance(loss_fn, ControlAwareLoss):
                 loss = loss_fn(pred, yb)
             else:
                 loss = loss_fn(pred, yb)
+            
             losses.append(loss.item())
             preds.append(pred.cpu().numpy())
             targets.append(yb.cpu().numpy())
@@ -177,6 +268,11 @@ class Trainer:
         preds_np = normalizer.inverse_transform_targets(np.vstack(preds))
         targets_np = normalizer.inverse_transform_targets(np.vstack(targets))
         metrics = compute_prediction_metrics(targets_np, preds_np)
+        
+        # Add intervention metrics computed from regression outputs
+        intervention_metrics = compute_intervention_metrics_from_regression(targets_np, preds_np)
+        metrics.update(intervention_metrics)
+        
         return float(np.mean(losses)), metrics
 
     @torch.no_grad()

@@ -275,7 +275,7 @@ def _release_absorption(
     queue: List[Tuple[float, float]],
     params: TankDynamicsParams,
     dt: float,
-) -> Tuple[List[Tuple[float, float]], float]:
+) -> Tuple[List[Tuple[float, float]], float, Dict[str, Any]]:
     new_queue = []
     released = 0.0
     
@@ -290,15 +290,33 @@ def _release_absorption(
     # Apply release rate cap (FIFO logic: put unreleased mass back with small/zero delay)
     dt_scale = dt / 60.0
     cap = params.max_queue_release_rate * max(dt_scale, 0.01)
-    if released > cap:
+    was_capped = released > cap
+    if was_capped:
         leftover = released - cap
         released = cap
         # Push leftover back into queue. 
         # By giving it a tiny positive time, we prevent zero-time artifacts while
         # keeping it at the front of the FIFO line for the next step.
         new_queue.append((leftover, 1e-6))
+    
+    # Calculate queue diagnostics
+    queue_mass = sum(mass for mass, _ in new_queue)
+    queue_count = len(new_queue)
+    queue_ages = [(60.0 - time_left) / 60.0 for _, time_left in new_queue]  # Convert to minutes
+    avg_queue_age = sum(queue_ages) / queue_count if queue_count > 0 else 0.0
+    max_queue_age = max(queue_ages) if queue_ages else 0.0
+    
+    diagnostics = {
+        "queue_mass": queue_mass,
+        "queue_count": queue_count,
+        "released_mass": released,
+        "release_cap": cap,
+        "was_capped": was_capped,
+        "avg_queue_age": avg_queue_age,
+        "max_queue_age": max_queue_age,
+    }
         
-    return new_queue, released
+    return new_queue, released, diagnostics
 
 
 def step_dynamics(
@@ -309,6 +327,7 @@ def step_dynamics(
     params: TankDynamicsParams,
     disturbance: DisturbanceInput = 0.0,
     rng: np.random.Generator | None = None,
+    enable_diagnostics: bool = False,
 ) -> TankState:
     """
     Advance one timestep using strict mechanistic progression and mass conservation.
@@ -325,7 +344,7 @@ def step_dynamics(
     queue, immediate_mass = _inject_delayed_dose(
         queue, dose_mass, params.delay_kernel, params.immediate_absorption_fraction
     )
-    queue, released_mass = _release_absorption(queue, params, dt)
+    queue, released_mass, queue_diagnostics = _release_absorption(queue, params, dt)
 
     # Global Modifiers
     thermal_growth = thermal_efficiency(state.water_temp, params)
@@ -346,6 +365,9 @@ def step_dynamics(
     mineralized *= params.mineralization_efficiency  # Only 30% of dead biomass mineralizes
 
     dissolved_new = state.dissolved_nutrient_mass + immediate_mass + released_mass + mineralized - dilution
+    
+    # Store dissolved before uptake for mass balance verification
+    dissolved_before_uptake = dissolved_new
 
     # Density dependence through self-shading (Hill function, n=2)
     # Gentle near equilibrium, sharp suppression at high density
@@ -489,7 +511,33 @@ def step_dynamics(
 
     time_since = 0.0 if dose_mass > 1e-6 else state.time_since_last_dose + dt
 
-    return TankState(
+    # Collect diagnostics if enabled
+    diagnostics = {}
+    if enable_diagnostics:
+        # Nutrient mass balance verification
+        # Δdissolved = immediate + queue_release + mineralization - uptake - dilution
+        net_dissolved_change = dissolved_new - state.dissolved_nutrient_mass
+        expected_change = immediate_mass + released_mass + mineralized - uptake_mass - dilution
+        mass_balance_residual = net_dissolved_change - expected_change
+        
+        diagnostics = {
+            **queue_diagnostics,
+            "immediate_mass": immediate_mass,
+            "dissolved_before": state.dissolved_nutrient_mass,
+            "dissolved_after_uptake": dissolved_before_uptake,
+            "dissolved_after": dissolved_new,
+            "uptake_mass": uptake_mass,
+            "dilution_loss": dilution,
+            "mineralization_contribution": mineralized,
+            "net_dissolved_change": net_dissolved_change,
+            "expected_change": expected_change,
+            "mass_balance_residual": mass_balance_residual,
+            "ec": ec_new,
+            "osmotic_stress": osmotic_stress,
+            "osmotic_factor": osmotic_factor,
+        }
+
+    new_state = TankState(
         water_temp=float(water_temp_new),
         ph=float(np.clip(ph_new, 5.5, 9.0)),
         dissolved_oxygen=float(np.clip(do_new, 2.0, 12.0)),
@@ -512,6 +560,8 @@ def step_dynamics(
         ec=ec_new,
         turbidity=turbidity_new,
     )
+
+    return new_state
 
 
 def simulate_open_loop(

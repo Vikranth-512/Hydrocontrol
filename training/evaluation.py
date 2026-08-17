@@ -27,6 +27,62 @@ def compute_prediction_metrics(
     return metrics
 
 
+def compute_intervention_metrics_from_regression(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+) -> Dict[str, float]:
+    """
+    Compute intervention precision/recall from regression outputs.
+    
+    Intervention is defined as action != (0, 0). No classifier needed.
+    
+    Args:
+        y_true: (N, 2) - target (flowrate, duration)
+        y_pred: (N, 2) - predicted (flowrate, duration)
+    
+    Returns:
+        Dict with precision, recall, F1, confusion matrix, etc.
+    """
+    # True intervention labels: 1 if either action > 0
+    true_intervention = ((y_true[:, 0] > 0) | (y_true[:, 1] > 0)).astype(int)
+    
+    # Predicted intervention: 1 if either predicted action > 0
+    pred_intervention = ((y_pred[:, 0] > 0) | (y_pred[:, 1] > 0)).astype(int)
+    
+    # Confusion matrix
+    tp = np.sum((true_intervention == 1) & (pred_intervention == 1))
+    tn = np.sum((true_intervention == 0) & (pred_intervention == 0))
+    fp = np.sum((true_intervention == 0) & (pred_intervention == 1))
+    fn = np.sum((true_intervention == 1) & (pred_intervention == 0))
+    
+    # Metrics
+    precision = tp / (tp + fp + 1e-8)
+    recall = tp / (tp + fn + 1e-8)
+    f1 = 2 * precision * recall / (precision + recall + 1e-8)
+    accuracy = (tp + tn) / (tp + tn + fp + fn + 1e-8)
+    
+    # Regression MAE on intervention samples only
+    intervention_mask = true_intervention == 1
+    if intervention_mask.sum() > 0:
+        mae_intervention = np.mean(np.abs(y_pred[intervention_mask] - y_true[intervention_mask]))
+    else:
+        mae_intervention = 0.0
+    
+    return {
+        "intervention_precision": float(precision),
+        "intervention_recall": float(recall),
+        "intervention_f1": float(f1),
+        "intervention_accuracy": float(accuracy),
+        "true_positives": int(tp),
+        "true_negatives": int(tn),
+        "false_positives": int(fp),
+        "false_negatives": int(fn),
+        "mae_intervention_only": float(mae_intervention),
+        "intervention_rate_true": float(np.mean(true_intervention)),
+        "intervention_rate_pred": float(np.mean(pred_intervention)),
+    }
+
+
 def compute_ecosystem_metrics(
     state_trace: List["TankState"],  # type: ignore[name-defined]
     flowrates: np.ndarray,
