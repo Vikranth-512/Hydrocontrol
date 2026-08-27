@@ -65,7 +65,7 @@ Train the reference LSTM controller.
 python main.py --stage evaluate
 ```
 
-Run closed-loop benchmark evaluation.
+Run closed-loop benchmark evaluation for the LSTM policy.
 
 ```bash
 python main.py --stage export
@@ -73,7 +73,42 @@ python main.py --stage export
 
 Export trained models.
 
+```bash
+python main.py --stage tune_pid
+```
+
+Tune PID baseline controller gains via multi-episode optimization.
+
+```bash
+python main.py --stage compare
+```
+
+Run both LSTM and PID evaluations and generate detailed side-by-side comparison plots.
+
 ---
+
+## Reproducibility
+
+HydroControl is designed as a reproducible research benchmark.
+
+The repository includes:
+
+* Fixed experimental seeds
+* Trajectory-level train/validation/test splits
+* Train-only feature normalization
+* Experiment metadata logging
+* Optimization-derived expert labels
+* Standardized disturbance scenarios
+* Reference PID and LSTM implementations
+* Publication-quality evaluation scripts
+
+These components enable reproducible experimentation and facilitate fair comparison of future hydroponic nutrient regulation algorithms within a common benchmark framework.
+
+To generate the full suite of reproducible side-by-side comparisons between the LSTM policy and PID baseline, simply run:
+
+```bash
+python main.py --stage compare
+```
 
 ## Generated Outputs
 
@@ -142,10 +177,10 @@ Current release:
 * 200 simulation trajectories
 * 59,042 optimization-labeled samples
 * Variable trajectory lengths (100–500 timesteps)
-* 17 engineered input features
+* Up to 28 engineered input features (including biological state estimates)
 * 2 continuous control targets
 * Standardized train/validation/test partitions
-* Sliding-window sequence generation (32 timesteps)
+* Sliding-window sequence generation (64 timesteps)
 
 Expert labels are generated using long-horizon optimization rather than manually designed control rules, providing a consistent supervisory signal suitable for imitation learning, supervised policy learning, and benchmark evaluation.
 
@@ -284,19 +319,4 @@ These metrics enable consistent comparison between classical controllers, learni
 
 ---
 
-## Reproducibility
 
-HydroControl is designed as a reproducible research benchmark.
-
-The repository includes:
-
-* Fixed experimental seeds
-* Trajectory-level train/validation/test splits
-* Train-only feature normalization
-* Experiment metadata logging
-* Optimization-derived expert labels
-* Standardized disturbance scenarios
-* Reference PID and LSTM implementations
-* Publication-quality evaluation scripts
-
-These components enable reproducible experimentation and facilitate fair comparison of future hydroponic nutrient regulation algorithms within a common benchmark framework.
