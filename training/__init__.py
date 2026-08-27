@@ -1,13 +1,15 @@
 """Training, losses, and offline evaluation."""
 
 from training.train import Trainer
-from training.losses import ControlAwareLoss, mse_loss
-from training.evaluation import compute_prediction_metrics, compute_control_metrics
+from training.losses import ControlAwareLoss, WeightedMaskedHuberLoss, mse_loss
+from training.evaluation import compute_prediction_metrics, compute_ecosystem_metrics, compute_intervention_metrics_from_regression
 
 __all__ = [
     "Trainer",
     "ControlAwareLoss",
+    "WeightedMaskedHuberLoss",
     "mse_loss",
     "compute_prediction_metrics",
-    "compute_control_metrics",
+    "compute_ecosystem_metrics",
+    "compute_intervention_metrics_from_regression",
 ]
