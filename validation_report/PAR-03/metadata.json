@@ -1,0 +1,77 @@
+{
+  "validation": "PAR-03",
+  "name": "Normalized Parameter Sensitivity Matrix Analysis",
+  "category": "VII. Parameter Identifiability",
+  "timestamp": "2026-09-24T16:10:46",
+  "elapsed_seconds": 30.9,
+  "random_seed": 42,
+  "dt_seconds": 60.0,
+  "scenario_length_steps": 800,
+  "scenarios": [
+    "normal",
+    "heatwave",
+    "nutrient_depletion",
+    "cold_shock"
+  ],
+  "perturbation_fractions": [
+    0.005,
+    0.01,
+    0.02
+  ],
+  "primary_perturbation_fraction": 0.01,
+  "parameters": [
+    "maximum_uptake_rate",
+    "half_saturation_mass",
+    "internal_capacity",
+    "maximum_growth_rate",
+    "growth_yield",
+    "maintenance_cost",
+    "biomass_nutrient_content",
+    "mortality_rate",
+    "mineralization_rate",
+    "mineralization_efficiency",
+    "damage_rate",
+    "repair_rate",
+    "osmotic_half_effect",
+    "light_attenuation_half_mass",
+    "q10_coefficient",
+    "background_dilution_rate"
+  ],
+  "parameter_categories": {
+    "maximum_uptake_rate": "Uptake",
+    "half_saturation_mass": "Uptake",
+    "internal_capacity": "Reserve",
+    "maximum_growth_rate": "Growth",
+    "growth_yield": "Growth",
+    "maintenance_cost": "Maintenance",
+    "biomass_nutrient_content": "Structural",
+    "mortality_rate": "Mortality",
+    "mineralization_rate": "Recycling",
+    "mineralization_efficiency": "Recycling",
+    "damage_rate": "Health",
+    "repair_rate": "Health",
+    "osmotic_half_effect": "Osmotic",
+    "light_attenuation_half_mass": "Light/Density",
+    "q10_coefficient": "Temperature",
+    "background_dilution_rate": "Transport"
+  },
+  "observable_features": [
+    "ec_mean",
+    "ec_final",
+    "ec_std",
+    "turbidity_mean",
+    "turbidity_final",
+    "turbidity_std"
+  ],
+  "latent_features": [
+    "biomass_mean",
+    "biomass_final",
+    "biomass_std"
+  ],
+  "min_output_scale": 0.01,
+  "collinearity_threshold": 0.95,
+  "rank_tolerance_relative": 0.0001,
+  "normalization": "S_ij = (theta_j / y_scale_i) * (y_i_hi - y_i_lo) / (p_j_hi - p_j_lo), y_scale_i = max(|y_i_nominal|, min_output_scale)",
+  "deterministic": true,
+  "warnings": []
+}

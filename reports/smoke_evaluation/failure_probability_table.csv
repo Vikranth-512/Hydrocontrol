@@ -1,0 +1,17 @@
+controller,scenario,n_episodes,failure_count,failure_rate,collapse_count,collapse_rate,survival_count,survival_rate
+no_action,normal,2,0,0.0,2,1.0,0,0.0
+no_action,heatwave,2,0,0.0,2,1.0,0,0.0
+no_action,nutrient_depletion,2,0,0.0,2,1.0,0,0.0
+no_action,cold_shock,2,0,0.0,2,1.0,0,0.0
+rule_based_reserve,normal,2,0,0.0,1,0.5,1,0.5
+rule_based_reserve,heatwave,2,0,0.0,0,0.0,2,1.0
+rule_based_reserve,nutrient_depletion,2,0,0.0,0,0.0,2,1.0
+rule_based_reserve,cold_shock,2,0,0.0,1,0.5,1,0.5
+pid,normal,2,0,0.0,0,0.0,2,1.0
+pid,heatwave,2,0,0.0,0,0.0,2,1.0
+pid,nutrient_depletion,2,0,0.0,0,0.0,2,1.0
+pid,cold_shock,2,0,0.0,0,0.0,2,1.0
+lstm,normal,2,0,0.0,0,0.0,2,1.0
+lstm,heatwave,2,0,0.0,0,0.0,2,1.0
+lstm,nutrient_depletion,2,0,0.0,0,0.0,2,1.0
+lstm,cold_shock,2,0,0.0,0,0.0,2,1.0

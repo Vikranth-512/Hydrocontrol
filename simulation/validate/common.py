@@ -39,10 +39,14 @@ def simulate_and_record(
     initial_state: Optional[TankState] = None,
     disturbances: Optional[List[DisturbanceInput]] = None,
     rng: Optional[np.random.Generator] = None,
+    enable_diagnostics: bool = False,
 ) -> pd.DataFrame:
     """
     Execute an open-loop simulation recording every physical state,
     sensor output, and cumulative mass tracker at every timestep.
+    
+    Args:
+        enable_diagnostics: If True, enables step_dynamics diagnostics output
     """
     rng = rng or np.random.default_rng(42)
     s = initial_state if initial_state is not None else TankState.create_initial(params, rng=rng)
@@ -62,7 +66,11 @@ def simulate_and_record(
         row["total_mass"] = s.compute_total_mass(params)
         rows.append(row)
 
-        s = step_dynamics(s, fr, dur, dt, params, disturbance=d, rng=rng)
+        s = step_dynamics(s, fr, dur, dt, params, disturbance=d, rng=rng, enable_diagnostics=enable_diagnostics)
+        
+        # If diagnostics enabled, add diagnostic data to row
+        if enable_diagnostics and hasattr(s, "_last_diagnostics"):
+            row.update(s._last_diagnostics)
 
     # Append final state
     row = s.as_dict()

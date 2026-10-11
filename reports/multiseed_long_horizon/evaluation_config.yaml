@@ -1,0 +1,23 @@
+base_seed: 42
+bootstrap_replicates: 5000
+bootstrap_seed: 12345
+confidence_level: 0.95
+horizon: 3500
+n_seeds: 30
+practical_thresholds:
+  ec_mae: 0.04
+  final_biomass: 5.0
+  final_reserve_ratio: 0.04
+  total_dose: 10.0
+scenarios:
+- normal
+- heatwave
+- nutrient_depletion
+- cold_shock
+- noisy_sensors
+- delayed_response
+- actuator_failure
+- actuator_saturation
+- sediment
+- temp_spike
+- ec_drop

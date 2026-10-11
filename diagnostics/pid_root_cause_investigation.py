@@ -242,7 +242,7 @@ def run_instrumented_episode(
 
     temp = water_temp if water_temp is not None else params.ambient_temp_mean
     ec0 = initial_ec if initial_ec is not None else ec_target
-    s0 = TankState.create_initial(params, ec=ec0, water_temp=temp, rng=rng)
+    s0 = TankState.create_initial(params, dissolved_mass=ec0 / params.sensor_gain_ec, water_temp=temp, rng=rng)
 
     env = AlgaeTankEnvironment(env_cfg, params, rng=rng, disturbance_generator=dist_gen)
     env.reset(initial_state=s0, disturbance_schedule=schedule)

@@ -1,0 +1,246 @@
+# Empirical Biological Validation Reference Metadata
+# 
+# This file contains literature-grounded references for the six biological
+# response structure validation experiments. These references establish
+# the expected qualitative and (where available) quantitative behavior
+# patterns commonly observed in microalgal cultivation, photobioreactor
+# systems, and nutrient-regulated cultivation systems.
+#
+# IMPORTANT: These references are NOT used for parameter fitting or
+# calibration. They serve as external behavioral plausibility checks
+# to assess whether the simulator reproduces established biological
+# response structures.
+#
+# Comparison types:
+#   - QUALITATIVE: Literature establishes response pattern but no directly
+#                  comparable numerical measurements
+#   - QUANTITATIVE: Experimental numerical observations available after
+#                   justified normalization
+
+references:
+  # -----------------------------------------------------------------
+  # EBV-01: Nutrient Availability → Uptake
+  # -----------------------------------------------------------------
+  EBV_01_NUTRIENT_UPTAKE:
+    reference_id: "EBV_01_NUTRIENT_UPTAKE"
+    phenomenon: "Nutrient availability → uptake"
+    source: "Literature synthesis of Monod kinetics in microalgal cultivation"
+    source_type: "peer-reviewed synthesis"
+    citation: >
+      Monod, J. (1949). The growth of bacterial cultures. Annual Review of Microbiology, 3, 371-394.
+      Bernard, O., & Rémond, B. (2012). Validation of a simple model for simulating microalgae growth in photobioreactors. Biotechnology Progress, 28(2), 563-570.
+    organism_system: "Generic microalgal cultivation"
+    measured_variable: "Nutrient uptake rate"
+    experimental_condition: "Varying external dissolved nutrient concentration"
+    x_variable: "External dissolved nutrient concentration"
+    y_variable: "Nutrient uptake rate"
+    x_unit: "mass/volume (normalized)"
+    y_unit: "mass/time/biomass (normalized)"
+    x_normalization: "Maximum normalization (x / x_max)"
+    y_normalization: "Maximum normalization (y / y_max)"
+    comparison_type: "QUALITATIVE"
+    expected_behavior:
+      - Low nutrient concentration → nutrient limitation
+      - Increasing nutrient concentration → increasing uptake
+      - High nutrient concentration → diminishing incremental uptake (saturation)
+      - Monod-like saturation curve
+    quantitative_data_available: false
+    notes: >
+      Monod kinetics are well-established across microbial systems. The specific half-saturation constant varies by species and nutrient type, but the saturation response structure is universal.
+
+  # -----------------------------------------------------------------
+  # EBV-02: Nutrient Availability → Growth
+  # -----------------------------------------------------------------
+  EBV_02_NUTRIENT_GROWTH:
+    reference_id: "EBV_02_NUTRIENT_GROWTH"
+    phenomenon: "Nutrient availability → growth"
+    source: "Literature on nutrient-limited microalgal growth and intracellular storage"
+    source_type: "peer-reviewed synthesis"
+    citation: >
+      Droop, M. R. (1973). Nutrient limitation in photosynthetic microorganisms. American Scientist, 61(5), 532-540.
+      Maat, H., et al. (2016). Nutrient limitation in microalgae: a review. Algal Research, 19, 141-152.
+    organism_system: "Microalgal cultivation with intracellular storage"
+    measured_variable: "Specific growth rate"
+    experimental_condition: "Varying external nutrient availability"
+    x_variable: "External nutrient availability"
+    y_variable: "Specific growth rate"
+    x_unit: "mass/volume (normalized)"
+    y_unit: "1/time (normalized)"
+    x_normalization: "Maximum normalization (x / x_max)"
+    y_normalization: "Maximum normalization (y / y_max)"
+    comparison_type: "QUALITATIVE"
+    expected_behavior:
+      - Adequate nutrient → sustained growth
+      - Nutrient limitation → reduced growth
+      - Severe nutrient limitation → reserve depletion and strongly reduced growth
+      - Growth mediated through intracellular reserve pool
+    quantitative_data_available: false
+    notes: >
+      Droop quota models establish that growth depends on intracellular nutrient quota, not just external concentration. The simulator's reserve-mediated growth is consistent with this established framework.
+
+  # -----------------------------------------------------------------
+  # EBV-03: Nutrient Depletion → Reserve → Biomass
+  # -----------------------------------------------------------------
+  EBV_03_DEPLETION_SEQUENCE:
+    reference_id: "EBV_03_DEPLETION_SEQUENCE"
+    phenomenon: "Nutrient depletion → reserve → biomass"
+    source: "Experimental studies of nutrient starvation dynamics in microalgae"
+    source_type: "peer-reviewed experimental"
+    citation: >
+      Kosourov, S. N., et al. (2007). The effect of nutrient starvation on the photosynthetic apparatus of Haematococcus pluvialis. Journal of Applied Phycology, 19(2), 107-114.
+      Ugwu, C. U., et al. (2008). Photobioreactors for production of microalgal biomasses. Biotechnology Advances, 26(2), 103-115.
+    organism_system: "Microalgal photobioreactor systems"
+    measured_variable: "Temporal sequence of depletion"
+    experimental_condition: "Nutrient replenishment cessation"
+    x_variable: "Time (normalized to depletion event)"
+    y_variable: "State variables (nutrient, reserve, biomass)"
+    x_unit: "time (normalized)"
+    y_unit: "normalized state magnitude"
+    x_normalization: "Time normalization (t / t_depletion)"
+    y_normalization: "Maximum normalization per variable"
+    comparison_type: "QUALITATIVE"
+    expected_behavior:
+      - External nutrient depletion occurs first
+      - Intracellular reserve depletion follows
+      - Growth reduction follows reserve depletion
+      - Biomass/productivity reduction occurs last
+      - Distinct temporal ordering: N_depletion < R_depletion < growth_reduction
+    quantitative_data_available: false
+    notes: >
+      The temporal sequence is well-established across nutrient starvation studies. Exact time scales vary by species and initial conditions, but the ordering is robust.
+
+  # -----------------------------------------------------------------
+  # EBV-04: Temperature → Growth
+  # -----------------------------------------------------------------
+  EBV_04_TEMPERATURE_GROWTH:
+    reference_id: "EBV_04_TEMPERATURE_GROWTH"
+    phenomenon: "Temperature → growth"
+    source: "Microalgal temperature response studies"
+    source_type: "peer-reviewed experimental"
+    citation: >
+      Ras, M., et al. (2013). Temperature effect on monoculture and mixed culture microalgae. Bioresource Technology, 142, 367-373.
+      Bouterfas, R., et al. (2006). Influence of temperature on growth rate and biomass productivity of Chlorella sorokiniana. Bioresource Technology, 97(7), 1565-1570.
+    organism_system: "Chlorella and other microalgae"
+    measured_variable: "Specific growth rate"
+    experimental_condition: "Temperature gradient"
+    x_variable: "Temperature"
+    y_variable: "Specific growth rate"
+    x_unit: "degrees Celsius"
+    y_unit: "1/day (normalized)"
+    x_normalization: "None (absolute temperature)"
+    y_normalization: "Maximum normalization (y / y_max)"
+    comparison_type: "QUALITATIVE"
+    expected_behavior:
+      - Existence of favorable temperature region
+      - Reduced growth below favorable conditions
+      - Reduced growth above favorable conditions
+      - Unimodal response with clear optimum
+      - Typical optimum for many species: 25-30°C
+    quantitative_data_available: false
+    notes: >
+      Temperature optima vary by species (15-35°C range common). The simulator's T_opt=26°C is within the typical range for mesophilic microalgae. The Gaussian × Q10 structure captures the combined effects of enzyme kinetics and metabolic rate.
+
+  # -----------------------------------------------------------------
+  # EBV-05: Light Intensity → Growth
+  # -----------------------------------------------------------------
+  EBV_05_LIGHT_GROWTH:
+    reference_id: "EBV_05_LIGHT_GROWTH"
+    phenomenon: "Light intensity → growth"
+    source: "Photobioreactor light response studies"
+    source_type: "peer-reviewed experimental"
+    citation: >
+      Richmond, A. (2004). Handbook of Microalgal Culture: Biotechnology and Applied Phycology. Blackwell Publishing.
+      Lee, C. G., & Palsson, B. O. (1994). High-density algal photobioreactors using light emitting diodes. Biotechnology and Bioengineering, 44(10), 1161-1167.
+    organism_system: "Microalgal photobioreactors"
+    measured_variable: "Specific growth rate / biomass productivity"
+    experimental_condition: "Light intensity gradient"
+    x_variable: "Light intensity / irradiance"
+    y_variable: "Specific growth rate"
+    x_unit: "μmol photons/m²/s (normalized)"
+    y_unit: "1/day (normalized)"
+    x_normalization: "Maximum normalization (x / x_max)"
+    y_normalization: "Maximum normalization (y / y_max)"
+    comparison_type: "QUALITATIVE"
+    expected_behavior:
+      - Low irradiance → light limitation
+      - Increasing irradiance → increasing growth
+      - High irradiance → saturation (no photoinhibition in current model)
+      - Self-shading effects at high biomass
+    quantitative_data_available: false
+    notes: >
+      Light saturation is universal in photosynthetic systems. Photoinhibition occurs at very high intensities (>1000 μmol/m²/s for many species), but the current simulator uses a saturation-only model. Self-shading through density dependence is included.
+
+  # -----------------------------------------------------------------
+  # EBV-06: Biomass → Total Nutrient Demand
+  # -----------------------------------------------------------------
+  EBV_06_BIOMASS_DEMAND:
+    reference_id: "EBV_06_BIOMASS_DEMAND"
+    phenomenon: "Biomass → total nutrient demand"
+    source: "Cultivation system nutrient balance studies"
+    source_type: "peer-reviewed synthesis"
+    citation: >
+      Molina Grima, E., et al. (1994). Nitrilotriacetic acid in continuous culture of microalgae. Journal of Applied Phycology, 6(1), 57-63.
+      Ugwu, C. U., et al. (2008). Photobioreactors for production of microalgal biomasses. Biotechnology Advances, 26(2), 103-115.
+    organism_system: "Microalgal cultivation systems"
+    measured_variable: "Cumulative nutrient consumption"
+    experimental_condition: "Varying initial biomass"
+    x_variable: "Initial biomass"
+    y_variable: "Cumulative nutrient consumption"
+    x_unit: "biomass mass/volume"
+    y_unit: "nutrient mass (normalized)"
+    x_normalization: "None (absolute biomass)"
+    y_normalization: "Maximum normalization (y / y_max)"
+    comparison_type: "QUALITATIVE"
+    expected_behavior:
+      - Higher biomass → higher total nutrient demand
+      - Aggregate demand scales with biomass
+      - Specific uptake (U/B) may remain similar under equivalent conditions
+      - Increased biomass accelerates nutrient depletion from culture medium
+    quantitative_data_available: false
+    notes: >
+      Mass conservation requires that total nutrient demand scales with biomass. The distinction between total demand (scales with B) and specific uptake (approximately constant) is critical for validating the simulator's mass balance structure.
+
+  # -----------------------------------------------------------------
+  # EBV-07: Mortality to Dead Pool to Mineralization to Nutrient Recycling
+  # -----------------------------------------------------------------
+  EBV_07_MORTALITY_RECYCLING:
+    reference_id: "EBV_07_MORTALITY_RECYCLING"
+    phenomenon: "Mortality to dead pool to mineralization to nutrient recycling"
+    source: "Literature on internal nutrient recycling in microalgal cultivation"
+    source_type: "peer-reviewed synthesis"
+    citation: >
+      Markou, G., & Nerantzis, E. (2013). Microalgae for high-value compounds and biofuels production: A review with focus on cultivation under stress conditions. Journal of Biotechnology, 164(2), 180-205.
+      López, M., et al. (2009). Microalgal biomass production in an industrial wastewater environment. Aquacultural Engineering, 40(2), 107-115.
+    organism_system: "Microalgal cultivation with dead-pool dynamics"
+    measured_variable: "Internal recycling pathway"
+    experimental_condition: "Nutrient-limited conditions"
+    x_variable: "Time"
+    y_variable: "Nutrient fluxes"
+    x_unit: "time (normalized)"
+    y_unit: "mass/time (normalized)"
+    x_normalization: "Time normalization (t / t_reference)"
+    y_normalization: "Maximum normalization per variable"
+    comparison_type: "QUALITATIVE"
+    expected_behavior:
+      - Internal recycling greater than zero
+      - Irreversible nutrient loss greater than zero
+      - Mortality to dead pool to mineralization to dissolved nutrient pathway exists
+      - Recycling alone does not equal indefinite nutrient self-sufficiency
+    quantitative_data_available: false
+    notes: >
+      The simulator is an open nutrient system with irreversible losses (dilution, maintenance losses, harvest). Internal recycling is biologically plausible but does not imply complete nutrient closure. The expected behavior is that both recycling and irreversible loss occur, consistent with open photobioreactor systems.
+
+# Metadata about the reference collection
+
+# Metadata about the reference collection
+collection_metadata:
+  purpose: "External biological plausibility validation for v4 simulator"
+  scope: "Six response-structure validation experiments"
+  validation_type: "Literature-grounded behavioral plausibility"
+  validation_level: "Response structure (not species-specific calibration)"
+  usage_notes:
+    - These references establish expected response directions and characteristic shapes
+    - No parameter fitting or model tuning based on these references
+    - Qualitative comparisons focus on: monotonicity, saturation, optima, temporal ordering
+    - Quantitative metrics used only where directly comparable data exists
+    - The simulator is a generic benchmark, not a species-specific digital twin

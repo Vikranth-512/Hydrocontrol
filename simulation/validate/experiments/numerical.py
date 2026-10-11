@@ -236,7 +236,7 @@ def run_clipping_analysis(output_dir: Path, params: TankDynamicsParams) -> Dict[
 
         queue = list(s.pending_doses)
         queue, imm = _inject_delayed_dose(queue, dose_mass, params.delay_kernel, params.immediate_absorption_fraction)
-        queue, rel = _release_absorption(queue, params, dt)
+        queue, rel, *_ = _release_absorption(queue, params, dt)
 
         dil_rate = (params.background_dilution_rate + params.ec_decay_jitter) * th_resp
         dilution = s.dissolved_nutrient_mass * (1.0 - np.exp(-dil_rate * dt_scale))

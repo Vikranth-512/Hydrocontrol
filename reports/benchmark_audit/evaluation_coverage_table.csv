@@ -1,0 +1,4 @@
+dimension,count,percentage,details
+Total Implemented Scenarios/Regimes,12,100.0,"All distinct named regimes in disturbances.py, synthetic_generator.py, closed_loop_eval.py"
+Scenarios in 3500-Step Benchmark,4,33.33333333333333,"normal, heatwave, nutrient_depletion, cold_shock (4 out of 12)"
+Implemented but Unevaluated Regimes,8,66.66666666666666,"noisy_sensors, delayed_response, actuator_failure, saturation, sediment, missing_data, temp_spike, ec_drop"

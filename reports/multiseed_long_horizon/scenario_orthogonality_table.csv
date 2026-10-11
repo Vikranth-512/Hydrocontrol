@@ -1,0 +1,13 @@
+scenario_id,display_name,family,primary_affected_subsystem,latent_state_affected,observation_affected,actuator_affected,temporal_profile,source_file
+normal,Normal (Baseline),Environmental Stress,environmental_biology,False,False,False,continuous,simulation/disturbances.py
+heatwave,Heatwave (+4.0°C),Environmental Stress,environmental_biology,True,False,False,sustained,simulation/disturbances.py
+nutrient_depletion,Nutrient Depletion,Environmental Stress,environmental_biology,True,False,False,sustained,simulation/disturbances.py
+cold_shock,Cold Shock (-3.5°C),Environmental Stress,environmental_biology,True,False,False,sustained,simulation/disturbances.py
+noisy_sensors,Noisy Sensors (3x Noise),Observation Degradation,sensor_observations,False,True,False,continuous,simulation/environment.py
+delayed_response,Delayed Response,Actuation & Transport,physical_transport,True,False,True,delayed,simulation/synthetic_generator.py
+actuator_failure,Actuator Failure (35% Eff),Actuation & Transport,actuator_delivery,False,False,True,late,simulation/disturbances.py
+actuator_saturation,Actuator Saturation,Actuation & Transport,actuator_delivery,False,False,True,continuous,simulation_runner/closed_loop_eval.py
+sediment,Sediment Plume,Observation Degradation,sensor_observations,False,True,False,transient,simulation/disturbances.py
+missing_data,Missing Data (EC NaN),Observation Degradation,sensor_telemetry,False,True,False,periodic,simulation_runner/closed_loop_eval.py
+temp_spike,Temperature Spike,Environmental Stress,environmental_biology,True,False,False,transient,simulation/disturbances.py
+ec_drop,EC Drop,Environmental Stress,environmental_biology,True,False,False,transient,simulation/disturbances.py

@@ -1,0 +1,13 @@
+Metric,Always-No-Action,LSTM,Gain (LSTM - Baseline)
+Overall accuracy,70.58%,90.79%,20.21%
+Macro F1,0.4138,0.8962,0.4824
+No-action F1,0.8275,0.9311,0.1035
+Intervention precision,0.0000,0.7733,0.7733
+Intervention recall,0.0000,0.9718,0.9718
+Intervention F1,0.0000,0.8613,0.8613
+Balanced accuracy,50.00%,92.65%,42.65%
+Non-zero exact-action accuracy,0.00%,21.08%,21.08%
+Conditional flow MAE (mL/min),N/A,0.608,-
+Conditional flow RMSE (mL/min),N/A,0.874,-
+Conditional duration MAE (s),N/A,3.587,-
+Conditional duration RMSE (s),N/A,5.226,-

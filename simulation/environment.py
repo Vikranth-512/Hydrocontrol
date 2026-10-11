@@ -63,20 +63,27 @@ class AlgaeTankEnvironment:
         rng: Optional[np.random.Generator] = None,
         include_optional_sensors: bool = True,
         disturbance_generator: Optional[DisturbanceGenerator] = None,
+        sensor_noise_schedule: Optional[Dict[str, np.ndarray]] = None,
+        sensor_bias_schedule: Optional[Union[np.ndarray, List[float]]] = None,
     ) -> None:
         self.config = config
         self.params = dynamics_params
         self.rng = rng or np.random.default_rng()
         self.include_optional_sensors = include_optional_sensors
         self.disturbance_gen = disturbance_generator
+        self.sensor_noise_schedule = sensor_noise_schedule
+        self.sensor_bias_schedule = sensor_bias_schedule
         self.state: Optional[TankState] = None
         self._disturbance_schedule: List[DisturbanceInput] = []
         self._sensor_bias_ec = 0.0
+        self._step_counter: int = 0
 
     def reset(
         self,
         initial_state: Optional[TankState] = None,
         disturbance_schedule: Optional[List[DisturbanceInput]] = None,
+        sensor_noise_schedule: Optional[Dict[str, np.ndarray]] = None,
+        sensor_bias_schedule: Optional[Union[np.ndarray, List[float]]] = None,
     ) -> np.ndarray:
         """Initialize episode; return noisy observation vector."""
         if initial_state is None:
@@ -85,9 +92,19 @@ class AlgaeTankEnvironment:
             self.state = initial_state
 
         self._disturbance_schedule = disturbance_schedule or []
+        if sensor_noise_schedule is not None:
+            self.sensor_noise_schedule = sensor_noise_schedule
+        if sensor_bias_schedule is not None:
+            self.sensor_bias_schedule = sensor_bias_schedule
+
+        self._step_counter = 0
         if self.disturbance_gen:
             self.disturbance_gen.reset()
-        self._sensor_bias_ec = 0.0
+
+        if self.sensor_bias_schedule is not None:
+            self._sensor_bias_ec = float(self.sensor_bias_schedule[0])
+        else:
+            self._sensor_bias_ec = 0.0
         return self._observe()
 
     def _clip_action(self, flowrate: float, duration: float) -> Tuple[float, float]:
@@ -124,7 +141,11 @@ class AlgaeTankEnvironment:
             disturbance=disturbance,
         )
 
-        if self.disturbance_gen:
+        self._step_counter += 1
+        if self.sensor_bias_schedule is not None:
+            idx = min(self._step_counter, len(self.sensor_bias_schedule) - 1)
+            self._sensor_bias_ec = float(self.sensor_bias_schedule[idx])
+        elif self.disturbance_gen:
             self._sensor_bias_ec = self.disturbance_gen.sample_sensor_bias()
 
         obs = self._observe()
@@ -144,18 +165,33 @@ class AlgaeTankEnvironment:
         cfg = self.config
         ns = cfg.noise_std
 
+        # Pre-generated CRN sensor noise innovation if available, else sample from RNG
+        if self.sensor_noise_schedule is not None:
+            idx = min(self._step_counter, len(self.sensor_noise_schedule["ec"]) - 1)
+            eps_water_temp = float(self.sensor_noise_schedule["water_temp"][idx])
+            eps_ec = float(self.sensor_noise_schedule["ec"][idx])
+            eps_turb = float(self.sensor_noise_schedule["turbidity"][idx])
+            eps_ph = float(self.sensor_noise_schedule["ph"][idx]) if "ph" in self.sensor_noise_schedule else 0.0
+            eps_do = float(self.sensor_noise_schedule["dissolved_oxygen"][idx]) if "dissolved_oxygen" in self.sensor_noise_schedule else 0.0
+        else:
+            eps_water_temp = float(self.rng.normal(0, ns["water_temp"]))
+            eps_ec = float(self.rng.normal(0, ns["ec"]))
+            eps_turb = float(self.rng.normal(0, ns["turbidity"]))
+            eps_ph = float(self.rng.normal(0, ns["ph"]))
+            eps_do = float(self.rng.normal(0, ns["dissolved_oxygen"]))
+
         obs = {
-            "water_temp": s.water_temp + self.rng.normal(0, ns["water_temp"]),
-            "ec": s.ec + self._sensor_bias_ec + self.rng.normal(0, ns["ec"]),
-            "turbidity": s.turbidity + self.rng.normal(0, ns["turbidity"]),
+            "water_temp": s.water_temp + eps_water_temp,
+            "ec": s.ec + self._sensor_bias_ec + eps_ec,
+            "turbidity": s.turbidity + eps_turb,
             "prev_flowrate": s.prev_flowrate,
             "prev_duration": s.prev_duration,
             "time_since_last_dose": s.time_since_last_dose,
         }
 
         if self.include_optional_sensors:
-            obs["ph"] = s.ph + self.rng.normal(0, ns["ph"])
-            obs["dissolved_oxygen"] = s.dissolved_oxygen + self.rng.normal(0, ns["dissolved_oxygen"])
+            obs["ph"] = s.ph + eps_ph
+            obs["dissolved_oxygen"] = s.dissolved_oxygen + eps_do
             obs["ambient_temp"] = s.ambient_temp
 
         keys = sorted(obs.keys())

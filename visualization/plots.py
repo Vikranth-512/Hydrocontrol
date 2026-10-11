@@ -454,39 +454,64 @@ class Plotter:
         plt.close(fig)
         return path
     
-    # COMPARISON PLOTTING FUNCTIONS (PID vs LSTM)
+    # COMPARISON PLOTTING FUNCTIONS (GENERIC OVER ALL CONTROLLERS)
     
+    @staticmethod
+    def _normalize_controller_dict(first: Any, second: Any = None, dt: float = 60.0) -> Tuple[Dict[str, Dict[str, Any]], float]:
+        """Standardizes trajectory inputs into a mapping of name -> result dict."""
+        if second is None or isinstance(second, (int, float)):
+            eff_dt = float(second) if isinstance(second, (int, float)) else dt
+            return first, eff_dt
+        return {"LSTM": first, "PID": second}, dt
+
+    @staticmethod
+    def _normalize_metrics_dict(first: Any, second: Any = None) -> Dict[str, Dict[str, float]]:
+        """Standardizes metrics inputs into a mapping of name -> metrics dict."""
+        if second is None:
+            return first
+        return {"LSTM": first, "PID": second}
+
+    @staticmethod
+    def _get_controller_style(name: str) -> Tuple[str, str, str]:
+        """Returns (display_label, color, linestyle) for unified benchmark plotting."""
+        norm = name.lower().replace("-", "_").replace(" ", "_")
+        if "no_action" in norm or "uncontrolled" in norm:
+            return ("No-action", "#7f7f7f", "--")
+        elif "rule" in norm:
+            return ("Rule-based", "#ff7f0e", "-")
+        elif "pid" in norm:
+            return ("PID", "#1f77b4", "-")
+        elif "lstm" in norm:
+            return ("LSTM", "#2ca02c", "-")
+        return (name.title(), "#9467bd", "-")
+
     def plot_compare_biomass(
         self,
-        lstm_results: Dict[str, Any],
-        pid_results: Dict[str, Any],
-        dt: float,
+        controllers_or_lstm: Any,
+        pid_results_or_dt: Any = 60.0,
+        dt: float = 60.0,
     ) -> Path:
-        """Plot 1: Biomass Trajectory (PID vs LSTM) - Most Important"""
-        lstm_traj = lstm_results["trajectory"]
-        pid_traj = pid_results.get("trajectory", {})  # PID trajectory now included
-        
-        t_lstm = np.arange(len(lstm_traj["biomass"])) * dt / 60.0
-        t_pid = np.arange(len(pid_traj.get("biomass", []))) * dt / 60.0 if pid_traj else t_lstm
+        """Plot 1: Biomass Trajectory comparison across controllers."""
+        controllers, dt = self._normalize_controller_dict(controllers_or_lstm, pid_results_or_dt, dt)
         
         fig, ax = plt.subplots(figsize=(15, 6))
+        for ctrl_key, res in controllers.items():
+            traj = res.get("trajectory", {}) if isinstance(res, dict) else {}
+            biomass = traj.get("biomass")
+            if biomass is not None and len(biomass) > 0:
+                t = np.arange(len(biomass)) * dt / 60.0
+                label, color, ls = self._get_controller_style(ctrl_key)
+                ax.plot(t, biomass, color=color, linestyle=ls, linewidth=2, label=label, alpha=0.9)
         
-        # Plot LSTM biomass
-        ax.plot(t_lstm, lstm_traj["biomass"], color="C2", linewidth=2, label="LSTM", alpha=0.9)
-        
-        # Plot PID biomass if available
-        if pid_traj and "biomass" in pid_traj:
-            ax.plot(t_pid, pid_traj["biomass"], color="C0", linewidth=2, label="PID", alpha=0.9)
-        
-        # Add thresholds
         ax.axhline(20.0, color="red", linestyle="--", alpha=0.5, label="Persistence Threshold")
         ax.axhline(300.0, color="orange", linestyle="--", alpha=0.5, label="Bloom Threshold")
         
         ax.set_xlabel("Time (min)")
         ax.set_ylabel("Biomass (g)")
-        ax.set_title("Biomass Trajectory: PID vs LSTM (3500 Steps)", fontsize=14, fontweight='bold')
+        ax.set_title("Biomass Trajectory: Controller Benchmark Comparison (3500 Steps)", fontsize=14, fontweight='bold')
         ax.legend(loc='upper right', fontsize=12)
         ax.grid(True, alpha=0.3)
+        ax.set_ylim(bottom=0.0)
         
         fig.tight_layout()
         path = self.output_dir / "compare_biomass.png"
@@ -496,33 +521,29 @@ class Plotter:
     
     def plot_compare_health(
         self,
-        lstm_results: Dict[str, Any],
-        pid_results: Dict[str, Any],
-        dt: float,
+        controllers_or_lstm: Any,
+        pid_results_or_dt: Any = 60.0,
+        dt: float = 60.0,
     ) -> Path:
-        """Plot 2: Health Trajectory (PID vs LSTM, zoomed 0.99-1.00)"""
-        lstm_traj = lstm_results["trajectory"]
-        pid_traj = pid_results.get("trajectory", {})  # PID trajectory now included
-        
-        t_lstm = np.arange(len(lstm_traj["health"])) * dt / 60.0
-        t_pid = np.arange(len(pid_traj.get("health", []))) * dt / 60.0 if pid_traj else t_lstm
+        """Plot 2: Health Trajectory comparison across controllers."""
+        controllers, dt = self._normalize_controller_dict(controllers_or_lstm, pid_results_or_dt, dt)
         
         fig, ax = plt.subplots(figsize=(15, 6))
+        for ctrl_key, res in controllers.items():
+            traj = res.get("trajectory", {}) if isinstance(res, dict) else {}
+            health = traj.get("health")
+            if health is not None and len(health) > 0:
+                t = np.arange(len(health)) * dt / 60.0
+                label, color, ls = self._get_controller_style(ctrl_key)
+                ax.plot(t, health, color=color, linestyle=ls, linewidth=2, label=label, alpha=0.9)
         
-        # Plot LSTM health
-        ax.plot(t_lstm, lstm_traj["health"], color="C2", linewidth=2, label="LSTM", alpha=0.9)
-        
-        # Plot PID health if available
-        if pid_traj and "health" in pid_traj:
-            ax.plot(t_pid, pid_traj["health"], color="C0", linewidth=2, label="PID", alpha=0.9)
-        
-        # Add critical threshold
-        ax.axhline(0.7, color="orange", linestyle="--", alpha=0.5, label="Health Floor")
+        ax.axhline(0.7, color="orange", linestyle="--", alpha=0.5, label="Health Floor (0.70)")
+        ax.axhline(0.2, color="red", linestyle="--", alpha=0.5, label="Collapse Threshold (0.20)")
         
         ax.set_xlabel("Time (min)")
         ax.set_ylabel("Health Index")
-        ax.set_title("Health Trajectory: PID vs LSTM (3500 Steps)", fontsize=14, fontweight='bold')
-        ax.set_ylim([0.985, 1.005])  # Zoom to show differences with slight margin above 1.0
+        ax.set_title("Health Trajectory: Controller Benchmark Comparison (3500 Steps)", fontsize=14, fontweight='bold')
+        ax.set_ylim([-0.05, 1.05])
         ax.legend(loc='lower right', fontsize=12)
         ax.grid(True, alpha=0.3)
         
@@ -534,38 +555,31 @@ class Plotter:
     
     def plot_compare_reserve(
         self,
-        lstm_results: Dict[str, Any],
-        pid_results: Dict[str, Any],
-        dt: float,
+        controllers_or_lstm: Any,
+        pid_results_or_dt: Any = 60.0,
+        dt: float = 60.0,
         reserve_target: float = 0.50,
     ) -> Path:
-        """Plot 3: Reserve Dynamics (PID vs LSTM)"""
-        lstm_traj = lstm_results["trajectory"]
-        pid_traj = pid_results.get("trajectory", {})  # PID trajectory now included
-        
-        t_lstm = np.arange(len(lstm_traj["reserve_ratio"])) * dt / 60.0
-        # PID uses "rho" instead of "reserve_ratio"
-        pid_reserve = pid_traj.get("rho", pid_traj.get("reserve_ratio", []))
-        t_pid = np.arange(len(pid_reserve)) * dt / 60.0 if pid_traj and len(pid_reserve) > 0 else t_lstm
+        """Plot 3: Reserve Dynamics comparison across controllers."""
+        controllers, dt = self._normalize_controller_dict(controllers_or_lstm, pid_results_or_dt, dt)
         
         fig, ax = plt.subplots(figsize=(15, 6))
+        for ctrl_key, res in controllers.items():
+            traj = res.get("trajectory", {}) if isinstance(res, dict) else {}
+            rho = traj.get("reserve_ratio", traj.get("rho"))
+            if rho is not None and len(rho) > 0:
+                t = np.arange(len(rho)) * dt / 60.0
+                label, color, ls = self._get_controller_style(ctrl_key)
+                ax.plot(t, rho, color=color, linestyle=ls, linewidth=2, label=label, alpha=0.9)
         
-        # Plot LSTM reserve
-        ax.plot(t_lstm, lstm_traj["reserve_ratio"], color="C2", linewidth=2, label="LSTM", alpha=0.9)
-        
-        # Plot PID reserve if available (check both "rho" and "reserve_ratio")
-        if pid_traj and len(pid_reserve) > 0:
-            ax.plot(t_pid, pid_reserve, color="C0", linewidth=2, label="PID", alpha=0.9)
-        
-        # Add thresholds
         ax.axhline(reserve_target, color="green", linestyle="--", alpha=0.7, label=f"Target ({reserve_target})")
         ax.axhline(0.20, color="red", linestyle="--", alpha=0.7, label="Floor (0.20)")
-        ax.axhline(0.15, color="darkred", linestyle="--", alpha=0.7, label="Starvation (0.15)")
+        ax.axhline(0.10, color="darkred", linestyle="--", alpha=0.7, label="Starvation (0.10)")
         
         ax.set_xlabel("Time (min)")
-        ax.set_ylabel("Reserve Ratio")
-        ax.set_title("Reserve Dynamics: PID vs LSTM (3500 Steps)", fontsize=14, fontweight='bold')
-        ax.set_ylim([0, 1.05])
+        ax.set_ylabel("Reserve Ratio (ρ)")
+        ax.set_title("Reserve Dynamics: Controller Benchmark Comparison (3500 Steps)", fontsize=14, fontweight='bold')
+        ax.set_ylim([-0.05, 1.05])
         ax.legend(loc='lower right', fontsize=12)
         ax.grid(True, alpha=0.3)
         
@@ -577,29 +591,25 @@ class Plotter:
     
     def plot_compare_dosing(
         self,
-        lstm_results: Dict[str, Any],
-        pid_results: Dict[str, Any],
-        dt: float,
+        controllers_or_lstm: Any,
+        pid_results_or_dt: Any = 60.0,
+        dt: float = 60.0,
     ) -> Path:
-        """Plot 4: Dosing Profile (PID vs LSTM)"""
-        lstm_traj = lstm_results["trajectory"]
-        pid_traj = pid_results.get("trajectory", {})  # PID trajectory now included
-        
-        t_lstm = np.arange(len(lstm_traj["flowrate"])) * dt / 60.0
-        t_pid = np.arange(len(pid_traj.get("flowrate", []))) * dt / 60.0 if pid_traj else t_lstm
+        """Plot 4: Dosing Profile comparison across controllers."""
+        controllers, dt = self._normalize_controller_dict(controllers_or_lstm, pid_results_or_dt, dt)
         
         fig, ax = plt.subplots(figsize=(15, 6))
-        
-        # Plot LSTM flowrate
-        ax.plot(t_lstm, lstm_traj["flowrate"], color="C2", linewidth=2, label="LSTM", alpha=0.9)
-        
-        # Plot PID flowrate if available
-        if pid_traj and "flowrate" in pid_traj:
-            ax.plot(t_pid, pid_traj["flowrate"], color="C0", linewidth=2, label="PID", alpha=0.9)
+        for ctrl_key, res in controllers.items():
+            traj = res.get("trajectory", {}) if isinstance(res, dict) else {}
+            fr = traj.get("flowrate")
+            if fr is not None and len(fr) > 0:
+                t = np.arange(len(fr)) * dt / 60.0
+                label, color, ls = self._get_controller_style(ctrl_key)
+                ax.plot(t, fr, color=color, linestyle=ls, linewidth=1.5, label=label, alpha=0.85)
         
         ax.set_xlabel("Time (min)")
         ax.set_ylabel("Flowrate (mL/min)")
-        ax.set_title("Dosing Profile: PID vs LSTM (3500 Steps)", fontsize=14, fontweight='bold')
+        ax.set_title("Dosing Profile: Controller Benchmark Comparison (3500 Steps)", fontsize=14, fontweight='bold')
         ax.legend(loc='upper right', fontsize=12)
         ax.grid(True, alpha=0.3)
         
@@ -611,30 +621,26 @@ class Plotter:
     
     def plot_compare_ec(
         self,
-        lstm_results: Dict[str, Any],
-        pid_results: Dict[str, Any],
-        dt: float,
+        controllers_or_lstm: Any,
+        pid_results_or_dt: Any = 60.0,
+        dt: float = 60.0,
     ) -> Path:
-        """Plot 5: EC Trajectory (PID vs LSTM)"""
-        lstm_traj = lstm_results["trajectory"]
-        pid_traj = pid_results.get("trajectory", {})
-        
-        t_lstm = np.arange(len(lstm_traj.get("ec", []))) * dt / 60.0 if "ec" in lstm_traj else np.arange(3500) * dt / 60.0
-        t_pid = np.arange(len(pid_traj.get("ec", []))) * dt / 60.0 if pid_traj and "ec" in pid_traj else t_lstm
+        """Plot 5: EC Trajectory comparison across controllers."""
+        controllers, dt = self._normalize_controller_dict(controllers_or_lstm, pid_results_or_dt, dt)
         
         fig, ax = plt.subplots(figsize=(15, 6))
+        for ctrl_key, res in controllers.items():
+            traj = res.get("trajectory", {}) if isinstance(res, dict) else {}
+            ec = traj.get("ec")
+            if ec is not None and len(ec) > 0:
+                t = np.arange(len(ec)) * dt / 60.0
+                label, color, ls = self._get_controller_style(ctrl_key)
+                ax.plot(t, ec, color=color, linestyle=ls, linewidth=2, label=label, alpha=0.9)
         
-        # Plot LSTM EC if available
-        if "ec" in lstm_traj:
-            ax.plot(t_lstm, lstm_traj["ec"], color="C2", linewidth=2, label="LSTM", alpha=0.9)
-        
-        # Plot PID EC if available
-        if pid_traj and "ec" in pid_traj:
-            ax.plot(t_pid, pid_traj["ec"], color="C0", linewidth=2, label="PID", alpha=0.9)
-        
+        ax.axhline(1.2, color="k", linestyle="--", alpha=0.6, label="EC Target (1.2)")
         ax.set_xlabel("Time (min)")
         ax.set_ylabel("EC (mS/cm)")
-        ax.set_title("EC Trajectory: PID vs LSTM (3500 Steps)", fontsize=14, fontweight='bold')
+        ax.set_title("EC Trajectory: Controller Benchmark Comparison (3500 Steps)", fontsize=14, fontweight='bold')
         ax.legend(loc='upper right', fontsize=12)
         ax.grid(True, alpha=0.3)
         
@@ -646,30 +652,29 @@ class Plotter:
     
     def plot_compare_biomass_vs_dose(
         self,
-        lstm_metrics: Dict[str, float],
-        pid_metrics: Dict[str, float],
+        controllers_or_lstm_metrics: Any,
+        pid_metrics: Optional[Dict[str, float]] = None,
     ) -> Path:
-        """Plot 6: Biomass vs Dose Tradeoff"""
+        """Plot 6: Biomass vs Dose Tradeoff comparison across controllers."""
+        metrics_by_ctrl = self._normalize_metrics_dict(controllers_or_lstm_metrics, pid_metrics)
+        
         fig, ax = plt.subplots(figsize=(10, 6))
-        
-        # Plot PID
-        ax.scatter(pid_metrics["total_dose"], pid_metrics["biomass_mean"], 
-                  color="C0", s=200, label="PID", alpha=0.8, edgecolors='black')
-        
-        # Plot LSTM
-        ax.scatter(lstm_metrics["total_dose"], lstm_metrics["biomass_mean"], 
-                  color="C2", s=200, label="LSTM", alpha=0.8, edgecolors='black')
+        for ctrl_key, m in metrics_by_ctrl.items():
+            label, color, _ = self._get_controller_style(ctrl_key)
+            dose = m.get("total_dose", 0.0)
+            biomass = m.get("biomass_mean", 0.0)
+            ax.scatter(dose, biomass, color=color, s=220, label=label, alpha=0.85, edgecolors='black', zorder=5)
         
         ax.set_xlabel("Total Dose (mL)")
         ax.set_ylabel("Mean Biomass (g)")
-        ax.set_title("Biomass vs Dose Tradeoff: PID vs LSTM", fontsize=14, fontweight='bold')
+        ax.set_title("Biomass vs Dose Tradeoff: Benchmark Comparison", fontsize=14, fontweight='bold')
         ax.legend(loc='upper right', fontsize=12)
         ax.grid(True, alpha=0.3)
         
-        # Add ideal direction annotation
-        ax.annotate('Ideal', xy=(0.1, 0.9), xytext=(0.3, 0.7),
+        ax.annotate('Ideal Direction\n(High Biomass, Low Dose)', xy=(0.08, 0.92), xytext=(0.25, 0.75),
+                   xycoords='axes fraction', textcoords='axes fraction',
                    arrowprops=dict(arrowstyle='->', color='red', lw=2),
-                   fontsize=12, color='red', fontweight='bold')
+                   fontsize=11, color='red', fontweight='bold')
         
         fig.tight_layout()
         path = self.output_dir / "compare_biomass_vs_dose.png"
@@ -679,38 +684,28 @@ class Plotter:
     
     def plot_compare_cumulative_dose(
         self,
-        lstm_results: Dict[str, Any],
-        pid_results: Dict[str, Any],
-        dt: float,
+        controllers_or_lstm: Any,
+        pid_results_or_dt: Any = 60.0,
+        dt: float = 60.0,
     ) -> Path:
-        """Plot 7: Cumulative Dose (PID vs LSTM)"""
-        lstm_traj = lstm_results["trajectory"]
-        pid_traj = pid_results.get("trajectory", {})  # PID trajectory now included
-        
-        t_lstm = np.arange(len(lstm_traj["flowrate"])) * dt / 60.0
-        t_pid = np.arange(len(pid_traj.get("flowrate", []))) * dt / 60.0 if pid_traj and len(pid_traj.get("flowrate", [])) > 0 else t_lstm
-        
-        # Calculate cumulative doses
-        lstm_dose = lstm_traj["flowrate"] * lstm_traj["duration"] / 60.0
-        lstm_cumulative = np.cumsum(lstm_dose)
+        """Plot 7: Cumulative Dose comparison across controllers."""
+        controllers, dt = self._normalize_controller_dict(controllers_or_lstm, pid_results_or_dt, dt)
         
         fig, ax = plt.subplots(figsize=(15, 6))
-        
-        # Plot LSTM cumulative dose
-        ax.plot(t_lstm, lstm_cumulative, color="C2", linewidth=2, label="LSTM", alpha=0.9)
-        
-        # Plot PID cumulative dose if available
-        if pid_traj and "flowrate" in pid_traj and "duration" in pid_traj and len(pid_traj["flowrate"]) > 0:
-            # Convert lists to numpy arrays for element-wise multiplication
-            pid_fr = np.array(pid_traj["flowrate"])
-            pid_dur = np.array(pid_traj["duration"])
-            pid_dose = pid_fr * pid_dur / 60.0
-            pid_cumulative = np.cumsum(pid_dose)
-            ax.plot(t_pid, pid_cumulative, color="C0", linewidth=2, label="PID", alpha=0.9)
+        for ctrl_key, res in controllers.items():
+            traj = res.get("trajectory", {}) if isinstance(res, dict) else {}
+            fr = traj.get("flowrate")
+            dur = traj.get("duration")
+            if fr is not None and dur is not None and len(fr) > 0:
+                dose = np.array(fr) * np.array(dur) / 60.0
+                cum_dose = np.cumsum(dose)
+                t = np.arange(len(cum_dose)) * dt / 60.0
+                label, color, ls = self._get_controller_style(ctrl_key)
+                ax.plot(t, cum_dose, color=color, linestyle=ls, linewidth=2, label=f"{label} ({cum_dose[-1]:.1f} mL)", alpha=0.9)
         
         ax.set_xlabel("Time (min)")
         ax.set_ylabel("Cumulative Dose (mL)")
-        ax.set_title("Cumulative Dose: PID vs LSTM (3500 Steps)", fontsize=14, fontweight='bold')
+        ax.set_title("Cumulative Dose: Controller Benchmark Comparison (3500 Steps)", fontsize=14, fontweight='bold')
         ax.legend(loc='upper left', fontsize=12)
         ax.grid(True, alpha=0.3)
         
@@ -722,54 +717,21 @@ class Plotter:
     
     def plot_compare_radar(
         self,
-        lstm_metrics: Dict[str, float],
-        pid_metrics: Dict[str, float],
+        controllers_or_lstm_metrics: Any,
+        pid_metrics: Optional[Dict[str, float]] = None,
     ) -> Path:
-        """Plot 8: Radar Chart Summary (PID vs LSTM)"""
-        # Normalize metrics for radar chart
+        """Plot 8: Radar Chart Summary comparison across controllers."""
+        metrics_by_ctrl = self._normalize_metrics_dict(controllers_or_lstm_metrics, pid_metrics)
+        
         metrics_to_normalize = [
-            ("health_mean", True),
-            ("biomass_mean", True),
-            ("reserve_mean", True),
-            ("ec_std", False),  # Lower is better
-            ("total_dose", False),  # Lower is better
-            ("biomass_cv_tail", False),  # Lower is better
-            ("control_smoothness", True),  # Higher is better - added smoothness
+            ("health_mean", True, 1.0),
+            ("biomass_mean", True, 200.0),
+            ("reserve_mean", True, 1.0),
+            ("ec_std", False, 2.0),
+            ("total_dose", False, 2000.0),
+            ("biomass_cv_tail", False, 0.5),
+            ("control_smoothness", True, 1.0),
         ]
-        
-        # Normalize values
-        lstm_norm = []
-        pid_norm = []
-        
-        for metric, higher_better in metrics_to_normalize:
-            lstm_val = lstm_metrics.get(metric, 0)
-            pid_val = pid_metrics.get(metric, 0)
-            
-            # Simple normalization ranges
-            if metric == "health_mean":
-                lstm_norm.append(lstm_val)
-                pid_norm.append(pid_val)
-            elif metric == "biomass_mean":
-                lstm_norm.append(min(lstm_val / 200, 1))
-                pid_norm.append(min(pid_val / 200, 1))
-            elif metric == "reserve_mean":
-                lstm_norm.append(lstm_val)
-                pid_norm.append(pid_val)
-            elif metric == "ec_std":
-                lstm_norm.append(1 - min(lstm_val / 2, 1))
-                pid_norm.append(1 - min(pid_val / 2, 1))
-            elif metric == "total_dose":
-                lstm_norm.append(1 - min(lstm_val / 2000, 1))
-                pid_norm.append(1 - min(pid_val / 2000, 1))
-            elif metric == "biomass_cv_tail":
-                lstm_norm.append(1 - min(lstm_val / 0.5, 1))
-                pid_norm.append(1 - min(pid_val / 0.5, 1))
-            elif metric == "control_smoothness":
-                # Normalize smoothness: typical range 0.0-1.0, higher is better
-                lstm_norm.append(min(lstm_val, 1.0))
-                pid_norm.append(min(pid_val, 1.0))
-        
-        # Create radar chart
         labels = ["Health", "Biomass", "Reserve", "EC Stability", "Dose Efficiency", "Biomass Stability", "Smoothness"]
         num_vars = len(labels)
         angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
@@ -777,14 +739,19 @@ class Plotter:
         
         fig, ax = plt.subplots(figsize=(10, 10), subplot_kw=dict(projection='polar'))
         
-        lstm_values = lstm_norm + lstm_norm[:1]
-        pid_values = pid_norm + pid_norm[:1]
-        
-        ax.plot(angles, lstm_values, 'o-', linewidth=2, label="LSTM", color="C2")
-        ax.fill(angles, lstm_values, alpha=0.15, color="C2")
-        
-        ax.plot(angles, pid_values, 'o-', linewidth=2, label="PID", color="C0")
-        ax.fill(angles, pid_values, alpha=0.15, color="C0")
+        for ctrl_key, m in metrics_by_ctrl.items():
+            label, color, _ = self._get_controller_style(ctrl_key)
+            norm_vals = []
+            for metric, higher_better, max_scale in metrics_to_normalize:
+                val = m.get(metric, 0.0) or 0.0
+                if higher_better:
+                    norm = min(max(val / max_scale, 0.0), 1.0)
+                else:
+                    norm = max(1.0 - min(val / max_scale, 1.0), 0.0)
+                norm_vals.append(norm)
+            norm_vals += norm_vals[:1]
+            ax.plot(angles, norm_vals, 'o-', linewidth=2, label=label, color=color)
+            ax.fill(angles, norm_vals, alpha=0.12, color=color)
         
         ax.set_xticks(angles[:-1])
         ax.set_xticklabels(labels)
@@ -793,7 +760,7 @@ class Plotter:
         ax.set_yticklabels(['0.25', '0.5', '0.75', '1.0'])
         ax.grid(True)
         ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1), fontsize=10)
-        ax.set_title("Performance Radar Chart: PID vs LSTM", fontsize=14, fontweight='bold', pad=20)
+        ax.set_title("Performance Radar Chart: Controller Benchmark Comparison", fontsize=14, fontweight='bold', pad=20)
         
         fig.tight_layout()
         path = self.output_dir / "compare_radar.png"
@@ -803,30 +770,29 @@ class Plotter:
     
     def plot_compare_tradeoff(
         self,
-        lstm_metrics: Dict[str, float],
-        pid_metrics: Dict[str, float],
+        controllers_or_lstm_metrics: Any,
+        pid_metrics: Optional[Dict[str, float]] = None,
     ) -> Path:
-        """Plot 9: Controller Tradeoff Scatter (Dose vs Health)"""
+        """Plot 9: Controller Tradeoff Scatter (Dose vs Health)."""
+        metrics_by_ctrl = self._normalize_metrics_dict(controllers_or_lstm_metrics, pid_metrics)
+        
         fig, ax = plt.subplots(figsize=(10, 6))
-        
-        # Plot PID
-        ax.scatter(pid_metrics["total_dose"], pid_metrics["health_mean"], 
-                  color="C0", s=200, label="PID", alpha=0.8, edgecolors='black')
-        
-        # Plot LSTM
-        ax.scatter(lstm_metrics["total_dose"], lstm_metrics["health_mean"], 
-                  color="C2", s=200, label="LSTM", alpha=0.8, edgecolors='black')
+        for ctrl_key, m in metrics_by_ctrl.items():
+            label, color, _ = self._get_controller_style(ctrl_key)
+            dose = m.get("total_dose", 0.0)
+            health = m.get("health_mean", 0.0)
+            ax.scatter(dose, health, color=color, s=220, label=label, alpha=0.85, edgecolors='black', zorder=5)
         
         ax.set_xlabel("Total Dose (mL)")
         ax.set_ylabel("Mean Health Index")
-        ax.set_title("Controller Tradeoff: Dose vs Health (PID vs LSTM)", fontsize=14, fontweight='bold')
+        ax.set_title("Controller Tradeoff: Dose vs Health Comparison", fontsize=14, fontweight='bold')
         ax.legend(loc='upper right', fontsize=12)
         ax.grid(True, alpha=0.3)
         
-        # Add ideal direction annotation
-        ax.annotate('Ideal', xy=(0.1, 0.95), xytext=(0.3, 0.8),
+        ax.annotate('Ideal Direction\n(High Health, Low Dose)', xy=(0.08, 0.92), xytext=(0.25, 0.75),
+                   xycoords='axes fraction', textcoords='axes fraction',
                    arrowprops=dict(arrowstyle='->', color='red', lw=2),
-                   fontsize=12, color='red', fontweight='bold')
+                   fontsize=11, color='red', fontweight='bold')
         
         fig.tight_layout()
         path = self.output_dir / "compare_tradeoff.png"
@@ -836,10 +802,12 @@ class Plotter:
     
     def plot_compare_parallel_coordinates(
         self,
-        lstm_metrics: Dict[str, float],
-        pid_metrics: Dict[str, float],
+        controllers_or_lstm_metrics: Any,
+        pid_metrics: Optional[Dict[str, float]] = None,
     ) -> Path:
-        """Plot 10: Parallel Coordinate Plot (PID vs LSTM)"""
+        """Plot 10: Parallel Coordinate Plot comparison across controllers."""
+        metrics_by_ctrl = self._normalize_metrics_dict(controllers_or_lstm_metrics, pid_metrics)
+        
         metrics = [
             "health_mean",
             "damage_mean", 
@@ -849,56 +817,38 @@ class Plotter:
             "total_dose",
             "control_smoothness"
         ]
-        
         labels = ["Health", "Damage", "Biomass", "Reserve", "EC Std", "Dose", "Smoothness"]
         
-        # Normalize metrics to 0-1 range
-        lstm_values = []
-        pid_values = []
-        
-        for metric in metrics:
-            lstm_val = lstm_metrics.get(metric, 0)
-            pid_val = pid_metrics.get(metric, 0)
-            
-            # Normalize based on metric type
-            if metric == "health_mean":
-                lstm_values.append(lstm_val)
-                pid_values.append(pid_val)
-            elif metric == "damage_mean":
-                lstm_values.append(1 - min(lstm_val / 0.1, 1))
-                pid_values.append(1 - min(pid_val / 0.1, 1))
-            elif metric == "biomass_mean":
-                lstm_values.append(min(lstm_val / 200, 1))
-                pid_values.append(min(pid_val / 200, 1))
-            elif metric == "reserve_mean":
-                lstm_values.append(lstm_val)
-                pid_values.append(pid_val)
-            elif metric == "ec_std":
-                lstm_values.append(1 - min(lstm_val / 2, 1))
-                pid_values.append(1 - min(pid_val / 2, 1))
-            elif metric == "total_dose":
-                lstm_values.append(1 - min(lstm_val / 2000, 1))
-                pid_values.append(1 - min(pid_val / 2000, 1))
-            elif metric == "control_smoothness":
-                lstm_values.append(lstm_val)
-                pid_values.append(pid_val)
-        
-        # Create parallel coordinates plot
-        fig, ax = plt.subplots(figsize=(12, 6))
-        
+        fig, ax = plt.subplots(figsize=(13, 6))
         x = np.arange(len(metrics))
         
-        # Plot LSTM
-        ax.plot(x, lstm_values, 'o-', linewidth=2, color="C2", label="LSTM", alpha=0.8)
-        
-        # Plot PID
-        ax.plot(x, pid_values, 'o-', linewidth=2, color="C0", label="PID", alpha=0.8)
+        for ctrl_key, m in metrics_by_ctrl.items():
+            label, color, ls = self._get_controller_style(ctrl_key)
+            vals = []
+            for metric in metrics:
+                val = m.get(metric, 0.0) or 0.0
+                if metric == "health_mean":
+                    vals.append(min(max(val, 0.0), 1.0))
+                elif metric == "damage_mean":
+                    vals.append(max(1.0 - min(val / 0.1, 1.0), 0.0))
+                elif metric == "biomass_mean":
+                    vals.append(min(max(val / 200.0, 0.0), 1.0))
+                elif metric == "reserve_mean":
+                    vals.append(min(max(val, 0.0), 1.0))
+                elif metric == "ec_std":
+                    vals.append(max(1.0 - min(val / 2.0, 1.0), 0.0))
+                elif metric == "total_dose":
+                    vals.append(max(1.0 - min(val / 2000.0, 1.0), 0.0))
+                elif metric == "control_smoothness":
+                    vals.append(min(max(val, 0.0), 1.0))
+            ax.plot(x, vals, 'o', linewidth=2, color=color, linestyle=ls, label=label, alpha=0.85)
+
         
         ax.set_xticks(x)
-        ax.set_xticklabels(labels, rotation=45, ha='right')
+        ax.set_xticklabels(labels, rotation=40, ha='right')
         ax.set_ylabel("Normalized Value")
-        ax.set_ylim(0, 1)
-        ax.set_title("Parallel Coordinates: PID vs LSTM", fontsize=14, fontweight='bold')
+        ax.set_ylim(0, 1.05)
+        ax.set_title("Parallel Coordinates: Controller Benchmark Comparison", fontsize=14, fontweight='bold')
         ax.legend(loc='lower right', fontsize=12)
         ax.grid(True, alpha=0.3)
         

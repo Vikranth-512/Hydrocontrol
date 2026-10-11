@@ -1,0 +1,24 @@
+{
+  "evaluation_stage": "multiseed_long_horizon",
+  "scenarios": [
+    "normal",
+    "heatwave",
+    "nutrient_depletion",
+    "cold_shock"
+  ],
+  "controllers": [
+    "no_action",
+    "rule_based_reserve",
+    "pid",
+    "lstm",
+    "mpc_reserve"
+  ],
+  "n_seeds_per_condition": 2,
+  "horizon": 3500,
+  "total_episodes": 40,
+  "condition_cells": 20,
+  "base_seed": 42,
+  "excluded_scenarios": [
+    "missing_data"
+  ]
+}

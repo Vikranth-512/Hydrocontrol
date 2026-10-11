@@ -2,7 +2,7 @@
 
 This document contains the automated scientific validation results for the mechanistic algae tank simulator.
 
-**Overall Status:** 32/32 passed (100.0%)
+**Overall Status:** 34/34 passed (100.0%)
 
 ---
 ## I. Physical Conservation
@@ -386,6 +386,26 @@ This document contains the automated scientific validation results for the mecha
 **Plots Generated:**
 - `monte_carlo.png`
 
+### [PASS] Normalized Parameter Sensitivity Matrix (PAR-03)
+**Hypothesis:** The normalized observable sensitivity matrix (S_obs) is non-trivially ranked and the parameter sensitivity directions are mutually distinguishable under the tested operating conditions, providing local practical-identifiability evidence for the evaluated parameter subset.
+**Status:** PASS
+
+**Metrics:**
+- Observable Matrix Rank (aggregated): 6
+- Rank Fraction: 0.38
+- Condition Number (S_obs agg): 656.1
+- Collinear Parameter Pairs: 36
+- Strongest Parameter (RMS): q10_coefficient
+- Num Parameters Analyzed: 16
+- Num Scenarios: 4
+
+**Plots Generated:**
+- `sensitivity_heatmap_normal.png`
+- `sensitivity_heatmap_aggregated.png`
+- `sensitivity_singular_values.png`
+- `sensitivity_collinearity.png`
+- `parameter_ranking.png`
+
 ## VIII. Controller Independence
 ---
 
@@ -427,3 +447,23 @@ This document contains the automated scientific validation results for the mecha
 
 **Plots Generated:**
 - `disturbance_recovery.png`
+
+## IX. Supervisory Policy Robustness
+---
+
+### [PASS] Supervisory Policy Sensitivity Analysis (ORC-04)
+**Hypothesis:** The rollout-selected supervisory policy exhibits quantified sensitivity to objective weight variations and rollout horizons, confirming that configurable weights and prediction horizons systematically guide supervisory labels.
+**Status:** PASS
+
+**Metrics:**
+- Representative States: 500
+- Objective Terms Tested: 12
+- Min Agreement (Obj Weights): 18.8%
+- Max Agreement (Obj Weights): 100.0%
+- Agreement H=50 vs H=100: 67.8%
+- Agreement H=100 vs H=100: 100.0%
+- Agreement H=200 vs H=100: 49.8%
+
+**Plots Generated:**
+- `objective_weight_sensitivity.png`
+- `horizon_sensitivity.png`

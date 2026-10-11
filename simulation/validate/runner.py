@@ -22,11 +22,13 @@ from simulation.validate.experiments import emergent
 from simulation.validate.experiments import sensors
 from simulation.validate.experiments import benchmark
 from simulation.validate.experiments import parameter
+from simulation.validate.experiments import sensitivity
 from simulation.validate.experiments import control
+from simulation.validate.experiments import supervisory_sensitivity
 
 
 def get_all_experiments() -> List[Experiment]:
-    """Registry of all validation experiments across 8 categories."""
+    """Registry of all validation experiments across 9 categories."""
     experiments: List[Experiment] = []
 
     # I. Physical Conservation
@@ -49,9 +51,13 @@ def get_all_experiments() -> List[Experiment]:
 
     # VII. Parameter Identifiability
     experiments.extend(parameter.REGISTERED_EXPERIMENTS)
+    experiments.extend(sensitivity.REGISTERED_EXPERIMENTS)
 
     # VIII. Controller Independence
     experiments.extend(control.REGISTERED_EXPERIMENTS)
+
+    # IX. Supervisory Policy Robustness
+    experiments.extend(supervisory_sensitivity.REGISTERED_EXPERIMENTS)
 
     return experiments
 

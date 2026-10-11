@@ -1,0 +1,2 @@
+controller,n_total,total_failures,failure_probability,failure_ci_lower,failure_ci_upper,total_collapses,collapse_probability,collapse_ci_lower,collapse_ci_upper,terminal_biomass_mean,terminal_biomass_median,terminal_biomass_min,terminal_biomass_max,early_terminated_count
+myopic_1step,120,0,0.0,0.0,0.031019166418703486,120,1.0,0.9689808335812966,1.0,22.95724684351524,22.865443832181434,20.467592994986347,25.46588004286698,0

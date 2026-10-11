@@ -1,0 +1,61 @@
+scenario,matrix,index,singular_value,numerical_rank
+normal,S_obs,0,13.661734859490183,6
+normal,S_obs,1,1.321742045974504,6
+normal,S_obs,2,0.4442512359718912,6
+normal,S_obs,3,0.20371690718881036,6
+normal,S_obs,4,0.043300385847218015,6
+normal,S_obs,5,0.006527650362067347,6
+heatwave,S_obs,0,14.87678716095216,6
+heatwave,S_obs,1,1.2550237783052698,6
+heatwave,S_obs,2,0.7293994737407543,6
+heatwave,S_obs,3,0.18898517223345696,6
+heatwave,S_obs,4,0.09964637577502743,6
+heatwave,S_obs,5,0.012938643263522107,6
+nutrient_depletion,S_obs,0,5.40894687648679,6
+nutrient_depletion,S_obs,1,1.8365363010412643,6
+nutrient_depletion,S_obs,2,0.32155114843576693,6
+nutrient_depletion,S_obs,3,0.16369640050689277,6
+nutrient_depletion,S_obs,4,0.04717325455841406,6
+nutrient_depletion,S_obs,5,0.008632571504128606,6
+cold_shock,S_obs,0,35.707806447949864,6
+cold_shock,S_obs,1,4.482928506378086,6
+cold_shock,S_obs,2,1.0010531807928162,6
+cold_shock,S_obs,3,0.23503230859772656,6
+cold_shock,S_obs,4,0.06136553776516665,6
+cold_shock,S_obs,5,0.030382529852806324,6
+normal,S_full (supplementary),0,13.677775792601206,6
+normal,S_full (supplementary),1,1.6769642958301747,6
+normal,S_full (supplementary),2,0.49557127705843507,6
+normal,S_full (supplementary),3,0.21809696996050115,6
+normal,S_full (supplementary),4,0.061833166309531645,6
+normal,S_full (supplementary),5,0.009498709807654803,6
+normal,S_full (supplementary),6,7.454376318019595e-05,6
+normal,S_full (supplementary),7,4.143632934149207e-06,6
+normal,S_full (supplementary),8,1.9505398785067487e-14,6
+heatwave,S_full (supplementary),0,14.896931039684597,6
+heatwave,S_full (supplementary),1,1.6426023059047636,6
+heatwave,S_full (supplementary),2,0.7887225927355391,6
+heatwave,S_full (supplementary),3,0.21170449836850658,6
+heatwave,S_full (supplementary),4,0.14174539267208805,6
+heatwave,S_full (supplementary),5,0.018680906557062206,6
+heatwave,S_full (supplementary),6,0.0004321488858802893,6
+heatwave,S_full (supplementary),7,2.381767779514469e-05,6
+heatwave,S_full (supplementary),8,1.5861974237731188e-14,6
+nutrient_depletion,S_full (supplementary),0,5.420309370539045,6
+nutrient_depletion,S_full (supplementary),1,2.5546015654951693,6
+nutrient_depletion,S_full (supplementary),2,0.3449213927143367,6
+nutrient_depletion,S_full (supplementary),3,0.16886739571287987,6
+nutrient_depletion,S_full (supplementary),4,0.06805475701358106,6
+nutrient_depletion,S_full (supplementary),5,0.014169834504925063,6
+nutrient_depletion,S_full (supplementary),6,0.0001906290528966962,6
+nutrient_depletion,S_full (supplementary),7,1.7807967316471505e-05,6
+nutrient_depletion,S_full (supplementary),8,1.3280675037084521e-14,6
+cold_shock,S_full (supplementary),0,36.236175322831095,6
+cold_shock,S_full (supplementary),1,4.494736055601082,6
+cold_shock,S_full (supplementary),2,1.3867038490881647,6
+cold_shock,S_full (supplementary),3,0.24105716078758355,6
+cold_shock,S_full (supplementary),4,0.08876235816438874,6
+cold_shock,S_full (supplementary),5,0.04379895950486405,6
+cold_shock,S_full (supplementary),6,0.000431484844750171,6
+cold_shock,S_full (supplementary),7,0.0002016224811570322,6
+cold_shock,S_full (supplementary),8,1.3731379884388176e-14,6

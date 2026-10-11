@@ -1,0 +1,12 @@
+base_seed: 42
+bootstrap_replicates: 5000
+bootstrap_seed: 12345
+controller: myopic_1step
+horizon: 3500
+n_candidates: 61
+n_seeds: 30
+scenarios:
+- normal
+- heatwave
+- nutrient_depletion
+- cold_shock

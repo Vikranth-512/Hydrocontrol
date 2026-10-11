@@ -529,6 +529,10 @@ def step_dynamics(
             "uptake_mass": uptake_mass,
             "dilution_loss": dilution,
             "mineralization_contribution": mineralized,
+            "mortality_flux": mortality_amount,
+            "maintenance_lost": maint_lost,
+            "harvest_loss": harvest_nutrient,
+            "irreversible_loss_flux": dilution + maint_lost + harvest_nutrient,
             "net_dissolved_change": net_dissolved_change,
             "expected_change": expected_change,
             "mass_balance_residual": mass_balance_residual,
@@ -560,6 +564,10 @@ def step_dynamics(
         ec=ec_new,
         turbidity=turbidity_new,
     )
+
+    # Attach diagnostics to state for validation access
+    if enable_diagnostics:
+        new_state._last_diagnostics = diagnostics
 
     return new_state
 

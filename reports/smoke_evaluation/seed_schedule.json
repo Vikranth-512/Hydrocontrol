@@ -1,0 +1,18 @@
+{
+  "normal": [
+    42,
+    43
+  ],
+  "heatwave": [
+    1042,
+    1043
+  ],
+  "nutrient_depletion": [
+    2042,
+    2043
+  ],
+  "cold_shock": [
+    3042,
+    3043
+  ]
+}

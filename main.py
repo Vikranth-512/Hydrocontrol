@@ -28,6 +28,7 @@ from preprocessing.feature_engineering import FeatureEngineer
 from preprocessing.normalization import FeatureNormalizer
 from preprocessing.sequence_builder import SequenceBuilder
 from simulation.optimization_labeler import OptimizationLabeler
+from simulation.scenario_registry import get_multiseed_evaluation_scenarios
 from simulation.synthetic_generator import SyntheticTrajectoryGenerator
 from simulation_runner.closed_loop_eval import ClosedLoopEvaluator
 from training.evaluation import compute_prediction_metrics
@@ -41,6 +42,7 @@ from utils import (
     set_seed,
 )
 from simulation.validate_dynamics import run_validation_suite
+from simulation.validate.empirical_runner import run_empirical_validation
 from visualization.plots import Plotter
 from controllers.pid_tuner import run_pid_tuning
 
@@ -249,77 +251,180 @@ def stage_evaluate(config: dict, paths: dict, trainer: Trainer, preprocessed: di
     return {"long_horizon_lstm": lstm_pid_conditions}
 
 
-def stage_compare(config: dict, paths: dict) -> None:
-    """Run both LSTM and PID pipelines and generate comparison plots."""
+def stage_compare(config: dict, paths: dict) -> Dict[str, Any]:
+    """
+    Run paired 3500-step long-horizon benchmark across four controllers:
+      1. No-action (uncontrolled baseline)
+      2. Reserve-ratio rule-based heuristic
+      3. PID controller
+      4. Learned LSTM policy
+    Evaluated under identical Common Random Numbers (CRN) and initial conditions.
+    """
     from pathlib import Path
-    import yaml
+    from models.lstm_policy import LSTMPolicy
     
-    # Create compare directory
+    # Create compare and reports directories
     compare_dir = paths["figures"] / "compare"
     compare_dir.mkdir(parents=True, exist_ok=True)
+    reports_dir = ROOT / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
     print(f"Comparison figures will be saved to: {compare_dir}")
+    print(f"Comparison reports will be saved to: {reports_dir}")
     
-    # Step 1: Run LSTM evaluation (3500 steps)
-    print("\n" + "=" * 60)
-    print("STEP 1: Running LSTM evaluation (3500 steps)")
-    print("=" * 60)
+    # Check if trained LSTM model and preprocessed feature metadata exist
+    ckpt_path = paths["checkpoints"] / "best_model.pt"
+    scalers_dir = paths.get("scalers", paths["processed"] / "scalers")
+    feat_cols_path = paths["processed"] / "feature_columns.json"
     
-    # Need to run the full pipeline up to evaluation
-    # Run feature engineering and training first
-    print("Running feature engineering...")
-    preprocessed = stage_preprocess(config, paths)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     
-    print("Training LSTM model...")
-    trainer = stage_train(config, paths, preprocessed)
+    if ckpt_path.exists() and feat_cols_path.exists() and scalers_dir.exists():
+        print(f"Loading existing LSTM checkpoint from {ckpt_path}...")
+        with open(feat_cols_path, "r") as f:
+            feat_meta = json.load(f)
+        feature_cols = feat_meta["features"]
+        
+        normalizer = FeatureNormalizer.load(scalers_dir)
+        mcfg = config.get("model", {})
+        model = LSTMPolicy(
+            input_size=len(feature_cols),
+            hidden_size=mcfg.get("hidden_size", 128),
+            num_layers=mcfg.get("num_layers", 2),
+            dropout=mcfg.get("dropout", 0.2),
+            output_size=mcfg.get("output_size", 2),
+        )
+        ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
+        state_dict = ckpt.get("model_state_dict", ckpt)
+        model.load_state_dict(state_dict)
+        model.to(device)
+        model.eval()
+    else:
+        print("Checkpoint not found. Running preprocessing and training...")
+        preprocessed = stage_preprocess(config, paths)
+        trainer = stage_train(config, paths, preprocessed)
+        model = trainer.model
+        normalizer = preprocessed["normalizer"]
+        feature_cols = preprocessed["feature_cols"]
+        device = trainer.device
+
+    # Run Paired 3500-Step Benchmark (All 4 controllers, exact CRN disturbances & s0)
+    print("\n" + "=" * 70)
+    print("RUNNING PAIRED 3500-STEP LONG-HORIZON BENCHMARK (CRN DISTURBANCES)")
+    print("=" * 70)
+    evaluator = ClosedLoopEvaluator(config, seed=config.get("seed", 42))
+    benchmark_results = evaluator.run_paired_benchmark_3500(
+        model=model,
+        normalizer=normalizer,
+        feature_columns=feature_cols,
+        device=device,
+    )
     
-    print("Running LSTM evaluation...")
-    lstm_results = stage_evaluate(config, paths, trainer, preprocessed)
+    # Extract metrics dictionary
+    metrics_by_ctrl = {k: v["metrics"] for k, v in benchmark_results.items()}
     
-    # Load LSTM metrics from evaluation results
-    lstm_metrics_path = paths["processed"] / "evaluation_results.json"
-    with open(lstm_metrics_path, "r") as f:
-        lstm_data = json.load(f)
-    lstm_metrics = lstm_data["long_horizon_lstm"]["metrics"]
+    # Format comparison table
+    rows = []
+    ctrl_display_names = [
+        ("no_action", "No-action"),
+        ("rule_based_reserve", "Rule-based"),
+        ("pid", "PID"),
+        ("lstm", "LSTM"),
+        ("mpc_reserve", "MPC Reserve"),
+    ]
+    for c_key, c_name in ctrl_display_names:
+        if c_key not in metrics_by_ctrl:
+            continue
+        m = metrics_by_ctrl.get(c_key, {})
+        rows.append({
+            "Controller": c_name,
+            "EC MAE": f"{m.get('ec_mae', 0.0):.4f}",
+            "EC RMSE": f"{m.get('ec_rmse', 0.0):.4f}",
+            "Final EC": f"{m.get('final_ec', 0.0):.4f}",
+            "Final Biomass": f"{m.get('final_biomass', 0.0):.2f}",
+            "Final Reserve Ratio": f"{m.get('final_reserve_ratio', 0.0):.4f}",
+            "Intervention Fraction": f"{m.get('intervention_fraction', 0.0):.4f}",
+            "Total Dose": f"{m.get('total_dose', 0.0):.2f}",
+            "Effective Horizon": m.get("effective_horizon", 3500),
+            "Terminated": "YES" if m.get("episode_terminated", False) else "NO",
+        })
+    df_comp = pd.DataFrame(rows)
     
-    # Step 2: Run PID tuning (3500 steps)
-    print("\n" + "=" * 60)
-    print("STEP 2: Running PID tuning (3500 steps)")
-    print("=" * 60)
+    # Print formatted markdown table to stdout
+    print("\n" + "=" * 70)
+    print("3500-STEP LONG-HORIZON BENCHMARK COMPARISON TABLE")
+    print("=" * 70)
+    headers = list(df_comp.columns)
+    md_lines = ["| " + " | ".join(headers) + " |", "| " + " | ".join(["---"] * len(headers)) + " |"]
+    for _, r in df_comp.iterrows():
+        md_lines.append("| " + " | ".join(str(r[h]) for h in headers) + " |")
+    comp_table_str = "\n".join(md_lines)
+    print(comp_table_str)
     
-    out_json = paths["processed"] / "pid_tuning_results.json"
-    fig_dir = paths["figures"] / "pid_tuning"
-    pid_results = run_pid_tuning(config, out_json, fig_dir)
-    pid_best = pid_results.get("best", {})
+    # Save CSV and Markdown reports
+    csv_report_path = reports_dir / "long_horizon_comparison.csv"
+    md_report_path = reports_dir / "long_horizon_comparison.md"
+    df_comp.to_csv(csv_report_path, index=False)
+    with open(md_report_path, "w") as f:
+        f.write("# 3500-Step Long-Horizon Controller Benchmark Comparison\n\n")
+        f.write(comp_table_str + "\n\n")
+        f.write("### Controller Information-Set Audit\n\n")
+        f.write("| Controller | Reserve Ratio (rho) | Biomass (B) | EC | 17-Feature Sensor History | Nature |\n")
+        f.write("| :--- | :---: | :---: | :---: | :---: | :--- |\n")
+        f.write("| **No-action** | — | — | — | — | Uncontrolled baseline, open-loop |\n")
+        f.write("| **Rule-based** | Yes | — | — | — | Reserve-ratio feedback heuristic |\n")
+        f.write("| **PID** | Yes | Yes (scale) | Yes (headroom) | — | Classical feedback control |\n")
+        f.write("| **LSTM** | Yes | (via features) | Yes | Yes | Learned policy (imitation) |\n")
+        f.write("| **MPC Reserve** | Yes | — | — | — | Predictive model-based baseline |\n")
+    print(f"\nSaved CSV comparison: {csv_report_path}")
+    print(f"Saved Markdown comparison: {md_report_path}")
     
-    # Load PID metrics from the saved file
-    pid_metrics_path = fig_dir / "pid_metrics.json"
-    with open(pid_metrics_path, "r") as f:
-        pid_metrics = json.load(f)
+    # Update data/processed/evaluation_results.json
+    results_path = paths["processed"] / "evaluation_results.json"
+    eval_json = {}
+    if results_path.exists():
+        with open(results_path, "r") as f:
+            try:
+                eval_json = json.load(f)
+            except Exception:
+                eval_json = {}
     
-    # Step 3: Generate comparison plots
-    print("\n" + "=" * 60)
-    print("STEP 3: Generating comparison plots")
-    print("=" * 60)
+    for c_key, c_field in [
+        ("no_action", "long_horizon_no_action"),
+        ("rule_based_reserve", "long_horizon_rule_based"),
+        ("pid", "long_horizon_pid"),
+        ("lstm", "long_horizon_lstm"),
+        ("mpc_reserve", "long_horizon_mpc_reserve"),
+    ]:
+        if c_key in metrics_by_ctrl:
+            eval_json[c_field] = {"metrics": metrics_by_ctrl.get(c_key, {})}
     
+    with open(results_path, "w") as f:
+        json.dump(eval_json, f, indent=2)
+    print(f"Updated benchmark records in: {results_path}")
+    
+    # Generate 10 Generic Comparison Figures
+    print("\n" + "=" * 70)
+    print("GENERATING 10 CONTROLLER BENCHMARK COMPARISON PLOTS")
+    print("=" * 70)
     plotter = Plotter(compare_dir)
     dt = config["simulation"]["dt_seconds"]
     reserve_target = config.get("ecosystem_control", {}).get("rho_setpoint", 0.50)
     
-    # Generate 10 comparison plots
-    print("Generating comparison plots...")
-    plotter.plot_compare_biomass(lstm_results["long_horizon_lstm"], pid_best, dt)
-    plotter.plot_compare_health(lstm_results["long_horizon_lstm"], pid_best, dt)
-    plotter.plot_compare_reserve(lstm_results["long_horizon_lstm"], pid_best, dt, reserve_target)
-    plotter.plot_compare_dosing(lstm_results["long_horizon_lstm"], pid_best, dt)
-    plotter.plot_compare_ec(lstm_results["long_horizon_lstm"], pid_best, dt)
-    plotter.plot_compare_biomass_vs_dose(lstm_metrics, pid_metrics)
-    plotter.plot_compare_cumulative_dose(lstm_results["long_horizon_lstm"], pid_best, dt)
-    plotter.plot_compare_radar(lstm_metrics, pid_metrics)
-    plotter.plot_compare_tradeoff(lstm_metrics, pid_metrics)
-    plotter.plot_compare_parallel_coordinates(lstm_metrics, pid_metrics)
+    plotter.plot_compare_biomass(benchmark_results, dt=dt)
+    plotter.plot_compare_health(benchmark_results, dt=dt)
+    plotter.plot_compare_reserve(benchmark_results, dt=dt, reserve_target=reserve_target)
+    plotter.plot_compare_dosing(benchmark_results, dt=dt)
+    plotter.plot_compare_ec(benchmark_results, dt=dt)
+    plotter.plot_compare_biomass_vs_dose(metrics_by_ctrl)
+    plotter.plot_compare_cumulative_dose(benchmark_results, dt=dt)
+    plotter.plot_compare_radar(metrics_by_ctrl)
+    plotter.plot_compare_tradeoff(metrics_by_ctrl)
+    plotter.plot_compare_parallel_coordinates(metrics_by_ctrl)
     
-    print(f"\nAll comparison plots saved to: {compare_dir}")
-    print("Comparison complete!")
+    print(f"\nAll 10 comparison plots successfully generated in: {compare_dir}")
+    print("Stage compare complete!")
+    return benchmark_results
+
 
 
 def stage_export(config: dict, paths: dict, trainer: Trainer, preprocessed: dict) -> None:
@@ -338,12 +443,147 @@ def stage_export(config: dict, paths: dict, trainer: Trainer, preprocessed: dict
     else:
         path = paths["checkpoints"] / "policy.pt"
         model.export_torchscript(example, str(path))
-    print(f"Exported to {path}")
+def stage_multiseed_long_horizon(config: dict, paths: dict, dry_run: bool = False) -> Dict[str, Any]:
+    """
+    Run paired multi-seed, multi-regime 3500-step statistical evaluation across four controllers:
+      1. No-action (uncontrolled baseline)
+      2. Reserve-ratio rule-based heuristic
+      3. PID controller
+      4. Learned LSTM policy
+    Evaluated under Common Random Numbers (CRN) with decoupled sensor noise innovations.
+    """
+    from evaluation.multiseed_evaluator import MultiSeedEvaluator
+    from visualization.multiseed_plots import generate_all_plots
+    from models.lstm_policy import LSTMPolicy
+
+    # Dry-run mode: print evaluation design and exit without executing
+    if dry_run:
+        ev_cfg = config.get("evaluation", {}).get("multiseed_long_horizon", {})
+        scenarios = ev_cfg.get("scenarios", get_multiseed_evaluation_scenarios())
+        n_seeds = int(ev_cfg.get("n_seeds", 30))
+        horizon = int(ev_cfg.get("horizon", 3500))
+        controllers = ["no_action", "rule_based_reserve", "pid", "lstm", "mpc_reserve"]
+        n_total = len(scenarios) * n_seeds * len(controllers)
+        n_cells = len(scenarios) * len(controllers)
+        expected_scenarios = 11
+        expected_cells = 55   # 11 scenarios × 5 controllers
+        expected_episodes = 1650  # 11 × 30 × 5
+        
+        print("\n" + "=" * 70)
+        print("DRY RUN: Paired Multi-Seed Long-Horizon Evaluation Design")
+        print("=" * 70)
+        print(f"  Scenarios ({len(scenarios)}): {scenarios}")
+        print(f"  Controllers ({len(controllers)}): {controllers}")
+        print(f"  Seeds per scenario: {n_seeds}")
+        print(f"  Horizon per episode: {horizon} steps")
+        print(f"  Total paired episodes: {len(scenarios) * n_seeds}")
+        print(f"  Total controller executions: {n_total}")
+        print(f"  Condition cells (controllers × scenarios): {n_cells}")
+        print(f"  Expected scenarios: {expected_scenarios}")
+        print(f"  Expected cells: {expected_cells}")
+        print(f"  Expected episodes: {expected_episodes}")
+        print(f"  missing_data: excluded")
+        print("=" * 70 + "\n")
+        
+        # Validate counts
+        assert len(scenarios) == expected_scenarios, f"Expected {expected_scenarios} scenarios, got {len(scenarios)}"
+        assert n_cells == expected_cells, f"Expected {expected_cells} cells, got {n_cells}"
+        assert n_total == expected_episodes, f"Expected {expected_episodes} episodes, got {n_total}"
+        assert "missing_data" not in scenarios, "missing_data should be excluded from scenarios"
+        
+        return {}
+
+    
+    ckpt_path = paths["checkpoints"] / "best_model.pt"
+    scalers_dir = paths.get("scalers", paths["processed"] / "scalers")
+    feat_cols_path = paths["processed"] / "feature_columns.json"
+    
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    if ckpt_path.exists() and feat_cols_path.exists() and scalers_dir.exists():
+        print(f"Loading existing LSTM checkpoint from {ckpt_path}...")
+        with open(feat_cols_path, "r") as f:
+            feat_meta = json.load(f)
+        feature_cols = feat_meta["features"]
+        
+        normalizer = FeatureNormalizer.load(scalers_dir)
+        mcfg = config.get("model", {})
+        model = LSTMPolicy(
+            input_size=len(feature_cols),
+            hidden_size=mcfg.get("hidden_size", 128),
+            num_layers=mcfg.get("num_layers", 2),
+            dropout=mcfg.get("dropout", 0.2),
+            output_size=mcfg.get("output_size", 2),
+        )
+        ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
+        state_dict = ckpt.get("model_state_dict", ckpt)
+        model.load_state_dict(state_dict)
+        model.to(device)
+        model.eval()
+    else:
+        print("Checkpoint or feature scalers not found. Running preprocessing and training...")
+        preprocessed = stage_preprocess(config, paths)
+        trainer = stage_train(config, paths, preprocessed)
+        model = trainer.model
+        normalizer = preprocessed["normalizer"]
+        feature_cols = preprocessed["feature_cols"]
+
+    evaluator = MultiSeedEvaluator(
+        config=config,
+        model=model,
+        normalizer=normalizer,
+        feature_columns=feature_cols,
+        device=device,
+        include_mpc=True,
+    )
+    
+    analysis = evaluator.run_full_evaluation()
+    
+    # Generate distribution and paired plots
+    print(f"\nGenerating publication-quality figures in {evaluator.figure_dir}...")
+    generate_all_plots(analysis, evaluator.figure_dir)
+    
+    # Print publication tables to stdout
+    print("\n" + "=" * 80)
+    print("PAIRED MULTI-SEED 3500-STEP EVALUATION: LSTM vs PID (Primary Reviewer Comparison)")
+    print("=" * 80)
+    df_pid = analysis["df_lstm_vs_pid"]
+    disp_cols = [
+        "scenario",
+        "metric",
+        "mean_difference",
+        "ci95_lower",
+        "ci95_upper",
+        "win_rate",
+        "episodes_exceeding_preregistered_effect_threshold",
+    ]
+    print(df_pid[disp_cols].to_string(index=False))
+
+    print("\n" + "=" * 80)
+    print("ML-DISCRIMINABILITY AUDIT: LSTM vs RESERVE-RULE (Practical Equivalence Margin)")
+    print("=" * 80)
+    df_eq = analysis["df_equivalence"]
+    df_eq_sub = df_eq[df_eq["comparison"] == "lstm_vs_rule_based_reserve"][
+        ["scenario", "metric", "mean_diff", "ci95_lower", "ci95_upper", "threshold_delta", "verdict"]
+    ]
+    print(df_eq_sub.to_string(index=False))
+
+    print("\n" + "=" * 80)
+    print(f"Artifacts successfully saved to: {evaluator.report_dir}")
+    print(f"Figures successfully saved to:   {evaluator.figure_dir}")
+    print("=" * 80 + "\n")
+    return analysis
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Algae dosing policy learning pipeline")
     parser.add_argument("--config", type=str, default="configs/default.yaml")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Print evaluation design (scenarios, controllers, seeds, horizon, episode count) and exit without running."
+    )
     parser.add_argument(
         "--stage",
         type=str,
@@ -351,6 +591,7 @@ def main() -> None:
         choices=[
             "all",
             "validate_dynamics",
+            "empirical_biological_validation",
             "generate",
             "label",
             "label_diagnostics",
@@ -360,6 +601,8 @@ def main() -> None:
             "export",
             "tune_pid",
             "compare",
+            "evaluate_intervention",
+            "multiseed_long_horizon",
         ],
     )
     args = parser.parse_args()
@@ -383,6 +626,11 @@ def main() -> None:
         print("Validation results:", val_results)
         if not val_results.get("validation_passed", False):
             print("WARNING: Dynamics validation criteria not fully met — review plots in", val_dir)
+
+    if args.stage == "empirical_biological_validation":
+        print("=== Stage: Empirical Biological Validation ===")
+        empirical_results = run_empirical_validation(paths["figures"])
+        print("Empirical validation results:", empirical_results)
 
     if args.stage in ("all", "generate"):
         stage_generate(config, paths)
@@ -487,6 +735,18 @@ def main() -> None:
     if args.stage == "compare":
         print("=== Stage: PID vs LSTM Comparison ===")
         stage_compare(config, paths)
+
+    if args.stage == "evaluate_intervention":
+        print("=== Stage: Reviewer-Response Intervention Evaluation ===")
+        from run_intervention_evaluation import run_evaluation
+        out_dir = ROOT / "reports" / "intervention_evaluation"
+        ckpt_path = ROOT / "checkpoints" / "best_model.pt"
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        run_evaluation(config, out_dir, ckpt_path, device=device)
+
+    if args.stage == "multiseed_long_horizon":
+        print("=== Stage: Paired Multi-Seed 3500-Step Statistical Evaluation ===")
+        stage_multiseed_long_horizon(config, paths, dry_run=args.dry_run)
 
     print("Pipeline complete.")
 

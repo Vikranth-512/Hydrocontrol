@@ -1,0 +1,162 @@
+{
+  "summary": {
+    "total_implemented_regimes": 12,
+    "evaluated_in_3500_benchmark": 4,
+    "unevaluated_regimes": 8,
+    "benchmark_coverage_percentage": 33.33333333333333
+  },
+  "inventory": [
+    {
+      "scenario_name": "normal",
+      "source_file": "simulation/disturbances.py",
+      "definition_entity": "DisturbanceGenerator.sample()",
+      "disturbances_involved": "Baseline correlated mixing noise, slow seasonal thermal drift, background stochastic pulses",
+      "parameters_modified": "mixing_noise_std=0.006, seasonal_drift_rate=0.002",
+      "used_in_training": true,
+      "used_in_validation": true,
+      "used_in_3500_benchmark": true,
+      "category": "Primary benchmark evaluation scenario"
+    },
+    {
+      "scenario_name": "heatwave",
+      "source_file": "simulation/disturbances.py",
+      "definition_entity": "DisturbanceGenerator.sample()",
+      "disturbances_involved": "Sustained positive temperature shock (+4.0 C), uptake multiplier (1.2x)",
+      "parameters_modified": "heatwave_magnitude=4.0, heatwave_duration=40 steps, temp_shock=+0.06 C/step",
+      "used_in_training": true,
+      "used_in_validation": true,
+      "used_in_3500_benchmark": true,
+      "category": "Primary benchmark evaluation scenario"
+    },
+    {
+      "scenario_name": "nutrient_depletion",
+      "source_file": "simulation/disturbances.py",
+      "definition_entity": "DisturbanceGenerator.sample()",
+      "disturbances_involved": "External nutrient depletion (negative EC shock) and elevated uptake (1.35x)",
+      "parameters_modified": "nutrient_depletion_magnitude=0.12, ec_shock=-0.048 mS/cm, uptake_mult=1.35",
+      "used_in_training": true,
+      "used_in_validation": true,
+      "used_in_3500_benchmark": true,
+      "category": "Primary benchmark evaluation scenario"
+    },
+    {
+      "scenario_name": "cold_shock",
+      "source_file": "simulation/disturbances.py",
+      "definition_entity": "DisturbanceGenerator.sample()",
+      "disturbances_involved": "Severe negative thermal shock (-3.5 C) and metabolic slowdown (0.85x uptake)",
+      "parameters_modified": "cold_shock_magnitude=-3.5, cold_shock_duration=25 steps, temp_shock=-0.042 C/step",
+      "used_in_training": true,
+      "used_in_validation": true,
+      "used_in_3500_benchmark": true,
+      "category": "Primary benchmark evaluation scenario"
+    },
+    {
+      "scenario_name": "temp_spike",
+      "source_file": "simulation/disturbances.py",
+      "definition_entity": "DisturbanceGenerator.sample()",
+      "disturbances_involved": "Short transient positive temperature spike (alias/variant of heatwave logic)",
+      "parameters_modified": "temp_spike_magnitude=3.0, temp_spike_prob=0.02",
+      "used_in_training": true,
+      "used_in_validation": false,
+      "used_in_3500_benchmark": false,
+      "category": "Implemented training scenario (heatwave alias/primitive)"
+    },
+    {
+      "scenario_name": "ec_drop",
+      "source_file": "simulation/disturbances.py",
+      "definition_entity": "DisturbanceGenerator.sample()",
+      "disturbances_involved": "Direct acute drop in dissolved nutrient concentration (alias of nutrient_depletion)",
+      "parameters_modified": "ec_shock_prob=0.02, ec_shock_magnitude=0.08",
+      "used_in_training": true,
+      "used_in_validation": false,
+      "used_in_3500_benchmark": false,
+      "category": "Implemented training scenario (nutrient depletion alias)"
+    },
+    {
+      "scenario_name": "noisy_sensors",
+      "source_file": "simulation/synthetic_generator.py",
+      "definition_entity": "SyntheticTrajectoryGenerator.generate_trajectory()",
+      "disturbances_involved": "3x elevated Gaussian measurement noise on all sensor channels (EC, temp, turbidity)",
+      "parameters_modified": "noise_std[k] = base * 3.0",
+      "used_in_training": true,
+      "used_in_validation": false,
+      "used_in_3500_benchmark": false,
+      "category": "Implemented sensor degradation regime (unevaluated in benchmark)"
+    },
+    {
+      "scenario_name": "delayed_response",
+      "source_file": "simulation/synthetic_generator.py",
+      "definition_entity": "SyntheticTrajectoryGenerator.generate_trajectory()",
+      "disturbances_involved": "Severe transport delay: immediate absorption reduced from 50% to 8%, delayed kernel extended",
+      "parameters_modified": "immediate_absorption_fraction=0.08, delay_kernel=(0.1, 0.25, 0.35, 0.30)",
+      "used_in_training": true,
+      "used_in_validation": false,
+      "used_in_3500_benchmark": false,
+      "category": "Implemented physical transport stress regime (unevaluated in benchmark)"
+    },
+    {
+      "scenario_name": "actuator_failure",
+      "source_file": "simulation/disturbances.py",
+      "definition_entity": "DisturbanceGenerator.sample()",
+      "disturbances_involved": "Pump mechanical degradation cutting effective dosing mass delivery to 35%",
+      "parameters_modified": "actuator_efficiency=0.35 for t > length // 2",
+      "used_in_training": true,
+      "used_in_validation": false,
+      "used_in_3500_benchmark": false,
+      "category": "Implemented actuator failure regime (unevaluated in benchmark)"
+    },
+    {
+      "scenario_name": "actuator_saturation / saturation",
+      "source_file": "simulation_runner/closed_loop_eval.py",
+      "definition_entity": "ClosedLoopEvaluator.run_episode()",
+      "disturbances_involved": "Severe hardware clamping of pump: flowrate capped at 1.0 mL/min, duration capped at 5.0 s",
+      "parameters_modified": "flowrate = min(fr, 1.0), duration = min(dur, 5.0)",
+      "used_in_training": true,
+      "used_in_validation": false,
+      "used_in_3500_benchmark": false,
+      "category": "Implemented hardware limitation regime (unevaluated in benchmark)"
+    },
+    {
+      "scenario_name": "sediment / turbidity_event",
+      "source_file": "simulation/disturbances.py",
+      "definition_entity": "DisturbanceGenerator.sample()",
+      "disturbances_involved": "Turbidity sensor blinding / particulate sediment plume (+18.0 NTU)",
+      "parameters_modified": "turbidity_sediment_magnitude=18.0, turbidity_shock=+9.0 NTU",
+      "used_in_training": true,
+      "used_in_validation": false,
+      "used_in_3500_benchmark": false,
+      "category": "Implemented optical disturbance regime (unevaluated in benchmark)"
+    },
+    {
+      "scenario_name": "missing_data",
+      "source_file": "simulation_runner/closed_loop_eval.py",
+      "definition_entity": "ClosedLoopEvaluator.run_episode()",
+      "disturbances_involved": "Intermittent sensor dropout: EC reading is replaced with NaN every 17 timesteps",
+      "parameters_modified": "obs_dict['ec'] = NaN when t % 17 == 0",
+      "used_in_training": false,
+      "used_in_validation": false,
+      "used_in_3500_benchmark": false,
+      "category": "Implemented telemetry dropout regime (unevaluated in benchmark)"
+    }
+  ],
+  "coverage": [
+    {
+      "dimension": "Total Implemented Scenarios/Regimes",
+      "count": 12,
+      "percentage": 100.0,
+      "details": "All distinct named regimes in disturbances.py, synthetic_generator.py, closed_loop_eval.py"
+    },
+    {
+      "dimension": "Scenarios in 3500-Step Benchmark",
+      "count": 4,
+      "percentage": 33.33333333333333,
+      "details": "normal, heatwave, nutrient_depletion, cold_shock (4 out of 12)"
+    },
+    {
+      "dimension": "Implemented but Unevaluated Regimes",
+      "count": 8,
+      "percentage": 66.66666666666666,
+      "details": "noisy_sensors, delayed_response, actuator_failure, saturation, sediment, missing_data, temp_spike, ec_drop"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+scenario,no_action,rule_based_reserve,pid,lstm,total
+normal,2/2,2/2,2/2,2/2,8/8
+heatwave,2/2,2/2,2/2,2/2,8/8
+nutrient_depletion,2/2,2/2,2/2,2/2,8/8
+cold_shock,2/2,2/2,2/2,2/2,8/8

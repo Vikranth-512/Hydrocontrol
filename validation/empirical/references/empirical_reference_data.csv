@@ -1,0 +1,19 @@
+reference_id,phenomenon,x_variable,y_variable,x_value,y_value,x_unit,y_unit,comparison_type,source
+EBV_01_NUTRIENT_UPTAKE,Nutrient availability → uptake,External dissolved nutrient,Nutrient uptake rate,0.05,0.10,normalized,normalized,QUALITATIVE,Monod kinetics synthesis
+EBV_01_NUTRIENT_UPTAKE,Nutrient availability → uptake,External dissolved nutrient,Nutrient uptake rate,0.10,0.18,normalized,normalized,QUALITATIVE,Monod kinetics synthesis
+EBV_01_NUTRIENT_UPTAKE,Nutrient availability → uptake,External dissolved nutrient,Nutrient uptake rate,0.20,0.33,normalized,normalized,QUALITATIVE,Monod kinetics synthesis
+EBV_01_NUTRIENT_UPTAKE,Nutrient availability → uptake,External dissolved nutrient,Nutrient uptake rate,0.40,0.55,normalized,normalized,QUALITATIVE,Monod kinetics synthesis
+EBV_01_NUTRIENT_UPTAKE,Nutrient availability → uptake,External dissolved nutrient,Nutrient uptake rate,0.60,0.71,normalized,normalized,QUALITATIVE,Monod kinetics synthesis
+EBV_01_NUTRIENT_UPTAKE,Nutrient availability → uptake,External dissolved nutrient,Nutrient uptake rate,0.80,0.82,normalized,normalized,QUALITATIVE,Monod kinetics synthesis
+EBV_01_NUTRIENT_UPTAKE,Nutrient availability → uptake,External dissolved nutrient,Nutrient uptake rate,1.00,0.90,normalized,normalized,QUALITATIVE,Monod kinetics synthesis
+EBV_01_NUTRIENT_UPTAKE,Nutrient availability → uptake,External dissolved nutrient,Nutrient uptake rate,1.50,0.96,normalized,normalized,QUALITATIVE,Monod kinetics synthesis
+EBV_01_NUTRIENT_UPTAKE,Nutrient availability → uptake,External dissolved nutrient,Nutrient uptake rate,2.00,0.98,normalized,normalized,QUALITATIVE,Monod kinetics synthesis
+EBV_01_NUTRIENT_UPTAKE,Nutrient availability → uptake,External dissolved nutrient,Nutrient uptake rate,3.00,0.99,normalized,normalized,QUALITATIVE,Monod kinetics synthesis
+EBV_04_TEMPERATURE_GROWTH,Temperature → growth,Temperature,Specific growth rate,15,0.45,C,normalized,QUALITATIVE,Temperature response studies
+EBV_04_TEMPERATURE_GROWTH,Temperature → growth,Temperature,Specific growth rate,20,0.78,C,normalized,QUALITATIVE,Temperature response studies
+EBV_04_TEMPERATURE_GROWTH,Temperature → growth,Temperature,Specific growth rate,25,0.95,C,normalized,QUALITATIVE,Temperature response studies
+EBV_04_TEMPERATURE_GROWTH,Temperature → growth,Temperature,Specific growth rate,26,1.00,C,normalized,QUALITATIVE,Temperature response studies
+EBV_04_TEMPERATURE_GROWTH,Temperature → growth,Temperature,Specific growth rate,28,0.97,C,normalized,QUALITATIVE,Temperature response studies
+EBV_04_TEMPERATURE_GROWTH,Temperature → growth,Temperature,Specific growth rate,30,0.88,C,normalized,QUALITATIVE,Temperature response studies
+EBV_04_TEMPERATURE_GROWTH,Temperature → growth,Temperature,Specific growth rate,35,0.52,C,normalized,QUALITATIVE,Temperature response studies
+EBV_04_TEMPERATURE_GROWTH,Temperature → growth,Temperature,Specific growth rate,40,0.25,C,normalized,QUALITATIVE,Temperature response studies

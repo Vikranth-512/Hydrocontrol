@@ -1,0 +1,4 @@
+Dose Magnitude Bin,Sample Count,Fraction of Interventions,Flow MAE (mL/min),Duration MAE (s),Exact Action Accuracy
+Low Dose (V <= 0.25 mL),280,13.6%,0.7717,4.8209,13.93%
+Medium Dose (0.25 mL < V <= 1.0 mL),696,33.9%,0.5439,3.4203,20.69%
+High Dose (V > 1.0 mL),1078,52.5%,0.606,3.375,23.19%
