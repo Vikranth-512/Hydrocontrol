@@ -77,6 +77,13 @@ dynamics:
   temp_relaxation_rate: 0.025
   ec_decay_jitter: 0.0
   gain_jitter: 0.0
+  # Actuator unit convention and dose-to-nutrient conversion
+  # flowrate_unit: mL/min  (informational; validated at runtime)
+  # duration_unit: s       (informational; validated at runtime)
+  # nutrient_conversion_neu_per_ml: NEU per mL of effective delivered solution.
+  # Default 1.0 preserves legacy benchmark numerical behavior.
+  # Changing this value scales all dose inputs to the simulator.
+  nutrient_conversion_neu_per_ml: 1.0
 
 disturbances:
   ec_shock_prob: 0.02
@@ -199,6 +206,63 @@ evaluation:
     kp: 2.683
     ki: 0.05
     kd: 0.126
+  rule_based:
+    rho_target: 0.50
+    deadband: 0.04
+    critical_low: 0.20
+    low_flowrate: 2.0
+    low_duration: 15.0
+    critical_flowrate: 4.0
+    critical_duration: 20.0
+  mpc_reserve:
+    target_reserve_ratio: 0.50
+    minimum_reserve_ratio: 0.20
+    prediction_horizon: 5
+    max_candidate_sequences: 30
+    action_history_length: 3
+    tracking_weight: 1.0
+    low_reserve_weight: 5.0
+    dose_effort_weight: 0.10
+    action_change_weight: 0.05
+    ridge_lambda: 1.0
+    history_window_length: 60
+    min_time_between_doses: 120.0
+    low_flowrate: 2.0
+    low_duration: 15.0
+    critical_flowrate: 4.0
+    critical_duration: 20.0
+  multiseed_long_horizon:
+    enabled: true
+    horizon: 3500
+    scenarios:
+      - normal
+      - heatwave
+      - nutrient_depletion
+      - cold_shock
+      - noisy_sensors
+      - delayed_response
+      - actuator_failure
+      - actuator_saturation
+      - sediment
+      - temp_spike
+      - ec_drop
+    n_seeds: 30
+    base_seed: 42
+    bootstrap_replicates: 5000
+    bootstrap_seed: 12345
+    confidence_level: 0.95
+    # Documented practical-effect and equivalence thresholds
+    # ec_mae: 0.04 mS/cm matches the controller deadband (0.04) and 2*sigma_ec sensor noise (0.02)
+    # final_biomass: 5.0 g/L corresponds to ~5-6% meaningful culture yield divergence from 80-100 g/L baseline
+    # total_dose: 10.0 mL corresponds to 20 moderate dosing pulses (0.5 mL each), reflecting material chemical cost
+    # final_reserve_ratio: 0.04 matches the regulation deadband (0.04) around rho_setpoint=0.50
+    practical_thresholds:
+      ec_mae: 0.04
+      final_biomass: 5.0
+      total_dose: 10.0
+      final_reserve_ratio: 0.04
+    figure_dir: figures/multiseed_long_horizon
+    report_dir: reports/multiseed_long_horizon
 
 pid_tuning:
   enabled: true
@@ -265,3 +329,81 @@ pid_tuning:
 
 export:
   format: torchscript
+
+# ---------------------------------------------------------------------------
+# PAR-03: Normalized Parameter Sensitivity Matrix Analysis
+# ---------------------------------------------------------------------------
+parameter_sensitivity:
+  enabled: true
+
+  # Mechanistic simulator parameters to include in the sensitivity analysis.
+  # These are scalar biological/physical parameters that materially define the
+  # simulator dynamics. Sensor, administrative, and derived parameters are excluded.
+  parameters:
+    - maximum_uptake_rate
+    - half_saturation_mass
+    - internal_capacity
+    - maximum_growth_rate
+    - growth_yield
+    - maintenance_cost
+    - biomass_nutrient_content
+    - mortality_rate
+    - mineralization_rate
+    - mineralization_efficiency
+    - damage_rate
+    - repair_rate
+    - osmotic_half_effect
+    - light_attenuation_half_mass
+    - q10_coefficient
+    - background_dilution_rate
+
+  # Trajectory features used to evaluate sensitivity.
+  # Primary (sensor-observable) features — used for S_obs matrix.
+  # biomass_* features are latent-state diagnostics evaluated separately.
+  observables:
+    - ec_mean
+    - ec_final
+    - ec_std
+    - turbidity_mean
+    - turbidity_final
+    - turbidity_std
+
+  latent_diagnostics:
+    - biomass_mean
+    - biomass_final
+    - biomass_std
+
+  # Operating scenarios — must cover contrasting dynamical regimes.
+  scenarios:
+    - normal
+    - heatwave
+    - nutrient_depletion
+    - cold_shock
+
+  # Central finite-difference perturbation fractions: ±frac * nominal.
+  # Multiple values are used for perturbation convergence analysis.
+  perturbation_fractions:
+    - 0.005
+    - 0.01
+    - 0.02
+
+  normalization:
+    # Minimum output magnitude used as y_scale guard (prevents divide-by-near-zero).
+    # S_ij = (p_j / max(|y_i|, min_output_scale)) * (y_hi - y_lo) / (p_hi - p_lo)
+    minimum_output_scale: 0.01
+
+  # Absolute cosine-similarity threshold for flagging collinear parameter pairs.
+  # Uses |cos(theta)| >= threshold to catch both parallel and anti-parallel directions.
+  collinearity_threshold: 0.95
+
+  # Relative singular-value threshold for numerical rank determination.
+  # sigma_k is treated as zero if sigma_k / sigma_max < numerical_rank_tolerance.
+  numerical_rank_tolerance: 1.0e-4
+
+  # Fixed RNG seed for all scenario trajectories (guarantees determinism).
+  random_seed: 42
+
+  # Whether to produce a supplementary full-state (latent) sensitivity matrix.
+  # The observable matrix (S_obs) is always the primary result.
+  include_latent_state_analysis: true
+

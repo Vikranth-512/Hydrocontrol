@@ -7,6 +7,28 @@ Design goals:
   - Biomass driven by internal nutrient reserves and Monod kinetics.
   - Sensor models strictly decoupled from internal plant state.
   - No hidden control equilibria or restoring springs.
+
+Unit convention:
+  - Actuator flow rate (flowrate):           mL/min
+  - Dosing duration (duration):              s
+  - Actuator efficiency (actuator_efficiency): dimensionless
+  - Effective delivered solution volume:     mL
+  - Nutrient conversion factor (nutrient_conversion_neu_per_ml): NEU/mL
+  - Nutrient input to simulator (dose_mass): NEU
+  - Dissolved nutrient, internal reserve, pending nutrient, dead nutrient pool: NEU
+  - Biomass (algae_biomass):                 NBU (nutrient-system biomass units)
+  - Reserve ratio (rho):                     dimensionless
+  - Synthetic EC observation (ec):           ECU (EC-observation units)
+
+  NEU, NBU, and ECU are model-defined units. They are not calibrated to grams,
+  milligrams, or mS/cm without independent experimental evidence.
+
+  The actuator interface specifies flow rate in mL/min and dosing duration in
+  seconds. Effective delivered solution volume is mapped to model nutrient input
+  through a configurable conversion factor expressed in NEU/mL. The default
+  factor of 1.0 NEU/mL is a numerical convention chosen to preserve the original
+  benchmark's dose magnitudes and simulation behavior; it does not represent an
+  experimentally calibrated nutrient concentration.
 """
 
 from __future__ import annotations
@@ -98,6 +120,12 @@ class TankDynamicsParams:
     ec_decay_jitter: float = 0.0
     gain_jitter: float = 0.0
 
+    # Actuator unit conversion
+    # Maps effective delivered solution volume (mL) to nutrient input (NEU).
+    # Default of 1.0 NEU/mL preserves legacy numerical behavior.
+    # Must be finite and strictly positive.
+    nutrient_conversion_neu_per_ml: float = 1.0
+
     @property
     def delay_steps(self) -> int:
         return len(self.delay_kernel)
@@ -113,7 +141,17 @@ class TankDynamicsParams:
                 kwargs[key] = dyn[key]
         if "delay_kernel" in dyn:
             kwargs["delay_kernel"] = tuple(dyn["delay_kernel"])
-        return cls(**kwargs)
+        instance = cls(**kwargs)
+        # Validate nutrient_conversion_neu_per_ml after construction so all
+        # sources (YAML, programmatic, default) are covered by one check.
+        import math as _math
+        c = instance.nutrient_conversion_neu_per_ml
+        if not _math.isfinite(c) or c <= 0.0:
+            raise ValueError(
+                f"dynamics.nutrient_conversion_neu_per_ml must be finite and strictly "
+                f"positive, got {c!r}. Check your YAML configuration."
+            )
+        return instance
 
     @classmethod
     def sample_random(cls, base: "TankDynamicsParams", rng: np.random.Generator) -> "TankDynamicsParams":
@@ -337,7 +375,23 @@ def step_dynamics(
     dt_scale = dt / 60.0
 
     # 1. Pump Action & Transport Delay
-    dose_mass = flowrate * duration / 60.0 * dist.actuator_efficiency
+    # flowrate: mL/min
+    # duration: seconds
+    # actuator_efficiency: dimensionless
+    # nutrient_conversion_neu_per_ml: NEU/mL
+    #
+    # Step 1: compute effective delivered solution volume (mL).
+    dose_volume_ml = (
+        flowrate
+        * duration
+        / 60.0
+        * dist.actuator_efficiency
+    )
+    # Step 2: convert volume to nutrient-equivalent units (NEU).
+    # The conversion factor is applied exactly once here; all downstream
+    # variables (dissolved_nutrient_mass, internal_reserve, pending_doses,
+    # cumulative_nutrients) are expressed in NEU.
+    dose_mass = dose_volume_ml * params.nutrient_conversion_neu_per_ml
     cumulative = state.cumulative_nutrients + dose_mass
     
     queue = list(state.pending_doses)

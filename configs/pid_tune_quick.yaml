@@ -57,6 +57,10 @@ dynamics:
   temp_relaxation_rate: 0.025
   ec_decay_jitter: 0.0001
   gain_jitter: 0.002
+  # Actuator unit convention and dose-to-nutrient conversion
+  # nutrient_conversion_neu_per_ml: NEU per mL of effective delivered solution.
+  # Default 1.0 preserves legacy benchmark numerical behavior.
+  nutrient_conversion_neu_per_ml: 1.0
 
 disturbances:
   heatwave_prob: 0.02
